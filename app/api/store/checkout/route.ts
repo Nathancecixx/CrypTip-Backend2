@@ -1,12 +1,12 @@
 import { z } from 'zod';
 import { requireSession } from '@/src/lib/auth';
 import { insertPurchase } from '@/src/lib/db';
-import { SKU_ALLOWLIST } from '@/src/constants';
+import { SKU, SKU_ALLOWLIST } from '@/src/constants';
 import { buildX402Payload } from '@/src/lib/x402';
 import { randomId } from '@/src/lib/crypto';
 export const runtime = 'nodejs';
 
-const Body = z.object({ sku: z.string() });
+const Body = z.object({ sku: z.enum([SKU.VANITY_MONTHLY, SKU.TEMPLATES_PACK_A, SKU.ADDON_HALO_V1]) });
 
 const SKU_PRICE_ATOMIC: Record<string, number> = {
   'vanity.monthly': 1000000,

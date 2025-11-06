@@ -6,7 +6,9 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "build:test": "tsc --project tsconfig.test.json",
+    "test": "npm run build:test && node --require ./register-paths.cjs --test \".test-dist/tests/**/*.test.js\""
   },
   "dependencies": {
     "next": "14.2.10",
