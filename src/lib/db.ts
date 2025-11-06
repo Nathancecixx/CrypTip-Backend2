@@ -66,6 +66,16 @@ export async function insertPurchase(row: any) {
   return data;
 }
 
+export async function getPurchaseById(id: string) {
+  const { data, error } = await supa
+    .from('purchases')
+    .select('*')
+    .eq('id', id)
+    .maybeSingle();
+  if (error) throw error;
+  return data;
+}
+
 export async function markPurchaseStatus(id: string, status: 'paid'|'paid-pending-mint'|'failed', txSig?: string) {
   const { data, error } = await supa
     .from('purchases')
