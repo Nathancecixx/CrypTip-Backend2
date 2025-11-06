@@ -13,6 +13,16 @@ export type UserRow = {
   last_login: string | null;
 };
 
+export async function getUserById(id: string) {
+  const { data, error } = await supa
+    .from('users')
+    .select('id, wallet_pubkey, handle, created_at, last_login')
+    .eq('id', id)
+    .maybeSingle();
+  if (error) throw error;
+  return (data as UserRow) ?? null;
+}
+
 export async function upsertUserByWallet(pubkey: string) {
   const { data, error } = await supa
     .from('users')

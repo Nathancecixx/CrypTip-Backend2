@@ -6,7 +6,10 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "npm run test:build && npm run test:run",
+    "test:build": "tsc --project tsconfig.tests.json",
+    "test:run": "node --test dist-tests/__tests__/pageAccess.test.js"
   },
   "dependencies": {
     "next": "14.2.10",

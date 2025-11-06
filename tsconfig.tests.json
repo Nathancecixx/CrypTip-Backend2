@@ -1,0 +1,18 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "outDir": "./dist-tests",
+    "module": "commonjs",
+    "moduleResolution": "node",
+    "target": "ES2022",
+    "declaration": false,
+    "emitDeclarationOnly": false,
+    "resolveJsonModule": true,
+    "allowJs": false
+  },
+  "include": [
+    "src/lib/pageAccess.ts",
+    "src/lib/__tests__/**/*.ts"
+  ]
+}
