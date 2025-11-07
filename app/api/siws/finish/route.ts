@@ -1,5 +1,6 @@
 import type { NextRequest } from 'next/server';
-import { withCORS, handleCorsOptions, validateRequestOrigin } from '@/src/lib/cors';
+import { NextResponse } from 'next/server';
+import { handleCorsOptions, withCORS, guardOrigin } from '@/src/lib/cors';
 import { verifySignature, setSessionCookie } from '@/src/lib/auth';
 import { consumeSiwsNonce, extractNonceFromMessage } from '@/src/lib/nonce-store';
 import { upsertUserByWallet } from '@/src/lib/db';
@@ -9,42 +10,60 @@ export async function OPTIONS(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const validation = validateRequestOrigin(req);
-  if (!validation.ok) return validation.response;
+  const guard = guardOrigin(req);
+  if (!guard.ok) return withCORS(req, guard.res);
 
-  const { address, signature, message } = await req.json().catch(() => ({}));
+  const { address, signature, message, nonce } = await req.json().catch(() => ({} as any));
   if (!address || !signature || !message) {
-    const bad = new Response(JSON.stringify({ error: 'missing fields' }), {
-      status: 400,
-      headers: { 'content-type': 'application/json' },
-    });
-    return withCORS(bad, validation.evaluation);
+    return withCORS(
+      req,
+      new NextResponse(
+        JSON.stringify({ error: 'bad_request', fields: { address: 'required', signature: 'required', message: 'required' } }),
+        { status: 400, headers: { 'content-type': 'application/json' } }
+      )
+    );
   }
 
-  const nonce = extractNonceFromMessage(message);
-  if (!nonce) {
-    const bad = new Response(JSON.stringify({ error: 'nonce_missing' }), { status: 400, headers: { 'content-type': 'application/json' } });
-    return withCORS(bad, validation.evaluation);
+  const extracted = extractNonceFromMessage(message);
+  if (!nonce || !extracted || extracted !== nonce) {
+    return withCORS(
+      req,
+      new NextResponse(JSON.stringify({ error: 'bad_request', fields: { nonce: 'required' } }), {
+        status: 400,
+        headers: { 'content-type': 'application/json' },
+      })
+    );
   }
 
-  const stored = consumeSiwsNonce(nonce);
-  if (!stored || stored.address !== address || stored.message !== message) {
-    const bad = new Response(JSON.stringify({ error: 'nonce_invalid' }), { status: 400, headers: { 'content-type': 'application/json' } });
-    return withCORS(bad, validation.evaluation);
+  const init = consumeSiwsNonce(nonce);
+  if (!init || init.address !== address || init.message !== message) {
+    return withCORS(
+      req,
+      new NextResponse(JSON.stringify({ error: 'nonce_invalid' }), {
+        status: 400,
+        headers: { 'content-type': 'application/json' },
+      })
+    );
   }
 
-  const ok = verifySignature(message, signature, address);
-  if (!ok) {
-    const bad = new Response(JSON.stringify({ error: 'bad_signature' }), { status: 401, headers: { 'content-type': 'application/json' } });
-    return withCORS(bad, validation.evaluation);
+  if (!verifySignature(message, signature, address)) {
+    return withCORS(
+      req,
+      new NextResponse(JSON.stringify({ error: 'bad_signature' }), {
+        status: 401,
+        headers: { 'content-type': 'application/json' },
+      })
+    );
   }
 
   const user = await upsertUserByWallet(address);
   setSessionCookie(req, user.id);
 
-  const res = new Response(JSON.stringify({ ok: true, userId: user.id }), {
-    status: 200,
-    headers: { 'content-type': 'application/json' },
-  });
-  return withCORS(res, validation.evaluation);
+  return withCORS(
+    req,
+    new NextResponse(JSON.stringify({ ok: true, userId: user.id }), {
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+    })
+  );
 }
