@@ -22,10 +22,7 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const domain =
-    resolveAllowedRequestDomain(req, validation.evaluation) ??
-    env.SIWS_DOMAIN ??
-    new URL(req.url).host;
+  const domain = resolveAllowedRequestDomain(req) ?? env.SIWS_DOMAIN ?? new URL(req.url).host;
 
   const normalizedAddress = address.trim();
   if (!normalizedAddress) {
