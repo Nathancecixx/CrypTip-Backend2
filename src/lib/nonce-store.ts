@@ -21,7 +21,11 @@ if (!globalThis.__ctjNonceStore) {
 
 export function saveSiwsNonce(record: Omit<StoredNonceRecord, 'expiresAt'>) {
   cleanupExpired();
-  globalStore.set(record.nonce, { ...record, expiresAt: Date.now() + TTL_MS });
+  const storedRecord: StoredNonceRecord = {
+    ...record,
+    expiresAt: Date.now() + TTL_MS,
+  };
+  globalStore.set(record.nonce, storedRecord);
 }
 
 export function consumeSiwsNonce(nonce: string): Omit<StoredNonceRecord, 'expiresAt'> | null {

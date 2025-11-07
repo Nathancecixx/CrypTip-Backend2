@@ -14,7 +14,7 @@ function parseOrigins(value?: string | null): string[] {
 }
 
 function allowedOrigins(): string[] {
-  const explicit = parseOrigins(env.ALLOWED_ORIGINS ?? env.ORIGIN_ALLOWLIST);
+  const explicit = parseOrigins(env.ORIGIN_ALLOWLIST);
   if (explicit.length > 0) {
     return explicit;
   }

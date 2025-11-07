@@ -4,6 +4,7 @@ import { env } from '@/src/lib/env';
 import { upsertUserByWallet } from '@/src/lib/db';
 import { handleCorsOptions, withCORS, validateRequestOrigin } from '@/src/lib/cors';
 import { issueSessionJWT, setSessionCookie } from '@/src/lib/auth';
+import { consumeSiwsNonce, extractNonceFromMessage } from '@/src/lib/nonce-store';
 
 import { PublicKey } from '@solana/web3.js';
 import nacl from 'tweetnacl';
@@ -90,6 +91,16 @@ export async function POST(req: NextRequest) {
     }
     if (issuedAt !== null && (Date.now() - issuedAt) > LOGIN_TTL_MS) {
       return fail(req, 400, 'nonce_expired');
+    }
+
+    const nonce = extractNonceFromMessage(message);
+    if (!nonce) {
+      return fail(req, 400, 'nonce_used_or_unknown');
+    }
+
+    const storedNonce = consumeSiwsNonce(nonce);
+    if (!storedNonce || storedNonce.address !== address || storedNonce.message !== message) {
+      return fail(req, 400, 'nonce_used_or_unknown');
     }
 
     if (!verifySignature(message, signature, address)) {
