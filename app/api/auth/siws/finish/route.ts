@@ -3,26 +3,16 @@ import { NextResponse } from 'next/server';
 import { env } from '@/src/lib/env';
 import { upsertUserByWallet } from '@/src/lib/db';
 import { handleCorsOptions, withCORS, validateRequestOrigin } from '@/src/lib/cors';
+import { issueSessionJWT, setSessionCookie } from '@/src/lib/auth';
 
 import { PublicKey } from '@solana/web3.js';
 import nacl from 'tweetnacl';
 import bs58 from 'bs58';
-import { createHmac } from 'node:crypto';
 
 export const runtime = 'nodejs';
 const LOGIN_TTL_MS = 10 * 60 * 1000; // 10 min
 
 // ---------- helpers ----------
-function b64url(input: string | Buffer) {
-  return Buffer.from(input).toString('base64').replace(/=+$/,'').replace(/\+/g,'-').replace(/\//g,'_');
-}
-function signHS256(payload: object, secret: string, header: object = { alg: 'HS256', typ: 'JWT' }) {
-  const enc = (o: object) => b64url(JSON.stringify(o));
-  const body = `${enc(header)}.${enc(payload)}`;
-  const sig = b64url(createHmac('sha256', secret).update(body).digest());
-  return `${body}.${sig}`;
-}
-
 function verifySignature(message: string, signatureB58: string, address: string): boolean {
   try {
     const pub = new PublicKey(address).toBytes();
@@ -117,40 +107,13 @@ export async function POST(req: NextRequest) {
     }
 
     // issue session
-    const secret = env.SESSION_SECRET;
-    if (!secret) {
+    if (!env.SESSION_SECRET) {
       return fail(req, 500, 'missing_session_secret');
     }
-    const now = Math.floor(Date.now() / 1000);
-    const ttl = Number(process.env.SESSION_MAX_AGE ?? 60 * 60 * 24 * 14);
-    const token = signHS256({ sub: userId, iat: now, exp: now + ttl, iss: 'cryptip-backend' }, secret);
 
+    const token = issueSessionJWT(userId);
     const res = NextResponse.json({ ok: true, userId }, { status: 200 });
-    // after you create: const res = NextResponse.json({ ok: true, userId }, { status: 200 });
-
-    const cookieDomain =
-      process.env.SESSION_COOKIE_DOMAIN && process.env.SESSION_COOKIE_DOMAIN.trim().length > 0
-        ? process.env.SESSION_COOKIE_DOMAIN.trim()
-        : undefined;
-
-    /**
-     * Important:
-     * - SameSite: 'none'  (required for cross-site)
-     * - Secure: true      (required when SameSite=None)
-     * - Domain: optional; leave undefined on Vercel preview domains.
-     *   For prod, use ".cryptip.org" if backend lives at "api.cryptip.org".
-     */
-    res.cookies.set({
-      name: process.env.SESSION_COOKIE_NAME ?? 'ctj_sess',
-      value: token,                    // your signed JWT
-      httpOnly: true,
-      secure: true,
-      sameSite: 'none',
-      path: '/',
-      maxAge: ttl,                     // seconds
-      ...(cookieDomain ? { domain: cookieDomain } : {}),
-    });
-
+    setSessionCookie(res, token);
 
     return withCORS(req, res);
   } catch {
