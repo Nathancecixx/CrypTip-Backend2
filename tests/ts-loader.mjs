@@ -37,6 +37,12 @@ export async function resolve(specifier, context, defaultResolve) {
     return { url: resolved, format: 'module', shortCircuit: true };
   }
 
+  if (specifier === 'next/server') {
+    const absolute = resolveWithExtensions(resolvePath(projectRoot, 'tests/stubs/next-server'));
+    const resolved = pathToFileURL(absolute).href;
+    return { url: resolved, format: 'module', shortCircuit: true };
+  }
+
   if (specifier.startsWith('./') || specifier.startsWith('../') || specifier.startsWith('/')) {
     const parentURL = context.parentURL ? fileURLToPath(context.parentURL) : projectRoot;
     const baseDir = specifier.startsWith('.') ? dirname(parentURL) : projectRoot;

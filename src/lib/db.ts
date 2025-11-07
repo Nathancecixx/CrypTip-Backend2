@@ -72,6 +72,7 @@ export type PurchaseRow = {
   id: string;
   user_id: string;
   sku: string;
+  amount_atomic: number;
   status: PurchaseStatus;
   tx_sig: string | null;
 };
