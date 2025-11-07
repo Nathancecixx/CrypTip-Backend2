@@ -1,22 +1,29 @@
 import { cookies } from 'next/headers';
 import { z } from 'zod';
-import { makeNonce, buildSiwsMessage } from '@/src/lib/auth';
-import { corsHeaders, getAllowedOrigin, notAllowedResponse, preflight } from '@/src/lib/cors';
+import { makeNonce, buildSiwsMessage, cookiePolicyForRequest } from '@/src/lib/auth';
+import { handleCorsOptions, withCors } from '@/src/middleware/cors';
 export const runtime = 'nodejs';
 
 const Body = z.object({ wallet: z.string().min(32) });
 
-export async function OPTIONS(req: Request) {
-  return preflight(req);
-}
+export const OPTIONS = handleCorsOptions;
 
-export async function POST(req: Request) {
-  const origin = getAllowedOrigin(req);
-  if (!origin) return notAllowedResponse();
-
-  const payload = Body.parse(await req.json());
+export const POST = withCors(async (req: Request) => {
+  let payload;
+  try {
+    payload = Body.parse(await req.json());
+  } catch {
+    return Response.json({ error: 'Invalid payload' }, { status: 400 });
+  }
   const nonce = makeNonce();
-  cookies().set('ctj_nonce', nonce, { httpOnly: true, sameSite: 'none', secure: true, path: '/', maxAge: 600 });
+  const policy = cookiePolicyForRequest(req);
+  cookies().set('ctj_nonce', nonce, {
+    httpOnly: true,
+    sameSite: policy.sameSite,
+    secure: policy.secure,
+    path: '/',
+    maxAge: 600,
+  });
   const message = buildSiwsMessage(payload.wallet, nonce);
-  return Response.json({ nonce, message }, { headers: corsHeaders(origin) });
-}
+  return Response.json({ nonce, message });
+});

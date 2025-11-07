@@ -1,15 +1,18 @@
 import { supa, markPurchaseStatus, addEntitlement } from '@/src/lib/db';
 import { mintAddon, mintLicense } from '@/src/lib/mint';
 import { log } from '@/src/lib/logger';
+import { handleCorsOptions, withCors } from '@/src/middleware/cors';
 export const runtime = 'nodejs';
 
-export async function GET() {
+export const OPTIONS = handleCorsOptions;
+
+export const GET = withCors(async () => {
   const { data: rows, error } = await supa
     .from('purchases')
     .select('id, user_id, sku')
     .eq('status', 'paid-pending-mint')
     .limit(50);
-  if (error) return new Response('DB error', { status: 500 });
+  if (error) return Response.json({ error: 'DB error' }, { status: 500 });
   for (const p of rows ?? []) {
     try {
       if (p.sku.startsWith('templates.')) {
@@ -32,4 +35,4 @@ export async function GET() {
     .eq('status', 'active')
     .lt('expires_at', new Date().toISOString());
   return Response.json({ processed: rows?.length ?? 0 });
-}
+});
