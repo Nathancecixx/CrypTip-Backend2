@@ -1,17 +1,17 @@
 import { getPageByWallet } from '@/src/lib/db';
-import { handleCorsOptions, withCors } from '@/src/middleware/cors';
+import { handleCorsOptions, withCORS } from '@/src/lib/cors';
 export const runtime = 'nodejs';
 
 export const OPTIONS = handleCorsOptions;
 
-export const GET = withCors(async (_req: Request, { params }: { params: { slug: string } }) => {
+export async function GET(req: Request, { params }: { params: { slug: string } }) {
   try {
     const page = await getPageByWallet(params.slug);
     if (!page || !page.public) {
-      return Response.json({ error: 'Not found' }, { status: 404 });
+      return withCORS(Response.json({ error: 'Not found' }, { status: 404 }), req);
     }
-    return Response.json({ page });
+    return withCORS(Response.json({ page }), req);
   } catch {
-    return Response.json({ error: 'Failed to load page' }, { status: 500 });
+    return withCORS(Response.json({ error: 'Failed to load page' }, { status: 500 }), req);
   }
-});
+}

@@ -11,7 +11,7 @@ const EnvSchema = z.object({
   JWT_SECRET: z.string().min(32),
   SIWS_DOMAIN: z.string().min(3),
   SESSION_COOKIE_NAME: z.string().default('ctj_sess'),
-  FRONTEND_ORIGIN: z.string().url().default('https://crytip-frontend2.vercel.app'),
+  FRONTEND_ORIGIN: z.string().url().default('https://cryptip-frontend.vercel.app'),
 
   X402_WEBHOOK_SECRET: z.string().min(10),
   X402_MERCHANT_USDC_ACCOUNT: z.string().min(20).optional(),

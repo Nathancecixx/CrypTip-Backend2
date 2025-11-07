@@ -4,7 +4,7 @@ import { insertPurchase } from '@/src/lib/db';
 import { SKU, SKU_ALLOWLIST } from '@/src/constants';
 import { buildX402Payload } from '@/src/lib/x402';
 import { randomId } from '@/src/lib/crypto';
-import { handleCorsOptions, withCors } from '@/src/middleware/cors';
+import { handleCorsOptions, withCORS } from '@/src/lib/cors';
 export const runtime = 'nodejs';
 
 const AllowedSkus = z.enum([
@@ -23,24 +23,24 @@ const SKU_PRICE_ATOMIC: Record<(typeof SKU)[keyof typeof SKU], number> = {
 
 export const OPTIONS = handleCorsOptions;
 
-export const POST = withCors(async (req: Request) => {
+export async function POST(req: Request) {
   let userId: string;
   try {
     ({ userId } = requireSession());
   } catch {
-    return Response.json({ error: 'Unauthorized' }, { status: 401 });
+    return withCORS(Response.json({ error: 'Unauthorized' }, { status: 401 }), req);
   }
 
   let body;
   try {
     body = Body.parse(await req.json());
   } catch {
-    return Response.json({ error: 'Invalid payload' }, { status: 400 });
+    return withCORS(Response.json({ error: 'Invalid payload' }, { status: 400 }), req);
   }
 
   const { sku } = body;
   if (!SKU_ALLOWLIST.has(sku)) {
-    return Response.json({ error: 'Invalid SKU' }, { status: 400 });
+    return withCORS(Response.json({ error: 'Invalid SKU' }, { status: 400 }), req);
   }
 
   const idempotency_key = randomId();
@@ -56,8 +56,8 @@ export const POST = withCors(async (req: Request) => {
     });
 
     const checkout = buildX402Payload(purchase.id, sku, amount);
-    return Response.json({ order_id: purchase.id, x402: checkout });
+    return withCORS(Response.json({ order_id: purchase.id, x402: checkout }), req);
   } catch {
-    return Response.json({ error: 'Failed to create purchase' }, { status: 500 });
+    return withCORS(Response.json({ error: 'Failed to create purchase' }, { status: 500 }), req);
   }
-});
+}
