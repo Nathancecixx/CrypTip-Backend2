@@ -278,6 +278,18 @@ export async function POST(req: NextRequest) {
       origin: req.headers.get('origin') ?? undefined,
     });
 
+    const consumed = await consumeIfValid({
+      address: normalizedAddress,
+      nonce: normalizedNonce,
+      domain: expectedDomain,
+    });
+
+    if (!consumed) {
+      return fail(req, 400, 'nonce_invalid', context);
+    }
+
+    context.hasNonce = true;
+
     const parsedSignature = normalizeSignatureInput(signature, signatureBytes, signatureBase64Input);
     if ('error' in parsedSignature) {
       return fail(req, 400, 'signature_malformed', context);
@@ -291,25 +303,12 @@ export async function POST(req: NextRequest) {
     try {
       publicKeyBytes = new PublicKey(normalizedAddress).toBytes();
     } catch {
-      await consumeIfValid({ address: normalizedAddress, nonce: normalizedNonce, domain: expectedDomain });
       return fail(req, 400, 'signature_malformed', context);
     }
 
     if (!verifySignature(messageBytes, parsedSignature.bytes, publicKeyBytes)) {
       return fail(req, 400, 'bad_signature', context);
     }
-
-    const consumed = await consumeIfValid({
-      address: normalizedAddress,
-      nonce: normalizedNonce,
-      domain: expectedDomain,
-    });
-
-    if (!consumed) {
-      return fail(req, 400, 'nonce_invalid', context);
-    }
-
-    context.hasNonce = true;
 
     const issuedAtStored = Date.parse(consumed.issued_at);
     if (!Number.isFinite(issuedAtStored) || Math.abs(issuedAtStored - issuedAtFromMessage) > 1000) {
