@@ -17,3 +17,8 @@ export async function waitForFinalized(signature: string, timeoutMs = 15000) {
   }
   return false;
 }
+
+export async function getParsedTransaction(signature: string) {
+  const conn = rpc();
+  return conn.getParsedTransaction(signature, { maxSupportedTransactionVersion: 0 });
+}
