@@ -11,17 +11,13 @@ export async function OPTIONS(req: NextRequest) {
 
 export async function GET(req: NextRequest) {
   const validation = validateRequestOrigin(req);
-  if (!validation.ok && validation.response) return validation.response;
+  if (!validation.ok && validation.response) return withCORS(req, validation.response);
 
   try {
     const { userId } = requireSession(req);
     const entitlements = await listEntitlements(userId);
     return withCORS(req, NextResponse.json({ me: { id: userId }, entitlements }, { status: 200 }));
   } catch {
-    const res = NextResponse.json(
-      { error: 'unauthorized' },
-      { status: 401, headers: { 'WWW-Authenticate': 'Bearer realm="siws"' } }
-    );
-    return withCORS(req, res);
+    return withCORS(req, NextResponse.json({ error: 'unauthorized' }, { status: 401 }));
   }
 }

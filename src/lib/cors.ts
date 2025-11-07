@@ -13,12 +13,33 @@ function parseOrigins(value?: string | null): string[] {
     .filter(Boolean);
 }
 
+const DEFAULT_ALLOWED_ORIGINS = [
+  'https://cryptip-frontend.vercel.app',
+  'https://crytip-frontend2.vercel.app',
+];
+
 function allowedOrigins(): string[] {
-  const explicit = parseOrigins(env.ORIGIN_ALLOWLIST);
-  if (explicit.length > 0) {
-    return explicit;
+  const results: string[] = [];
+  const seen = new Set<string>();
+  const push = (value: string) => {
+    if (!seen.has(value)) {
+      seen.add(value);
+      results.push(value);
+    }
+  };
+
+  for (const origin of parseOrigins(env.ORIGIN_ALLOWLIST)) push(origin);
+  for (const origin of parseOrigins(env.ALLOWED_ORIGINS)) push(origin);
+
+  if (env.FRONTEND_ORIGIN) {
+    push(env.FRONTEND_ORIGIN);
   }
-  return env.FRONTEND_ORIGIN ? [env.FRONTEND_ORIGIN] : [];
+
+  if (results.length === 0) {
+    for (const origin of DEFAULT_ALLOWED_ORIGINS) push(origin);
+  }
+
+  return results;
 }
 
 export function validateRequestOrigin(req: NextRequest) {

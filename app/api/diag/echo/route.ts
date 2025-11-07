@@ -7,7 +7,7 @@ export async function OPTIONS(req: NextRequest) {
 
 export async function GET(req: NextRequest) {
   const validation = validateRequestOrigin(req);
-  if (!validation.ok && validation.response) return validation.response;
+  if (!validation.ok && validation.response) return withCORS(req, validation.response);
 
   const origin = req.headers.get('origin') ?? null;
   const data = {
@@ -26,7 +26,7 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   const validation = validateRequestOrigin(req);
-  if (!validation.ok && validation.response) return validation.response;
+  if (!validation.ok && validation.response) return withCORS(req, validation.response);
 
   let body: unknown = null;
   try {

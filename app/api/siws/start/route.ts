@@ -11,7 +11,7 @@ export async function OPTIONS(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   const validation = validateRequestOrigin(req);
-  if (!validation.ok && validation.response) return validation.response;
+  if (!validation.ok && validation.response) return withCORS(req, validation.response);
 
   const { address } = await req.json().catch(() => ({} as any));
   if (!address || typeof address !== 'string') {

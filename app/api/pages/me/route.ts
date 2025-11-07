@@ -8,17 +8,13 @@ export const OPTIONS = handleCorsOptions;
 
 export async function GET(req: NextRequest) {
   const validation = validateRequestOrigin(req);
-  if (!validation.ok && validation.response) return validation.response;
+  if (!validation.ok && validation.response) return withCORS(req, validation.response);
 
   let userId: string;
   try {
     ({ userId } = requireSession(req));
   } catch {
-    const res = NextResponse.json(
-      { error: 'unauthorized' },
-      { status: 401, headers: { 'WWW-Authenticate': 'Bearer realm="siws"' } },
-    );
-    return withCORS(req, res);
+    return withCORS(req, NextResponse.json({ error: 'unauthorized' }, { status: 401 }));
   }
 
   try {
