@@ -1,38 +1,62 @@
-import { z } from 'zod';
 import { verifySignature, setSessionCookie } from '@/src/lib/auth';
 import { upsertUserByWallet } from '@/src/lib/db';
-import { handleCorsOptions, withCORS } from '@/src/lib/cors';
-import { consumeSiwsNonce, extractNonceFromMessage } from '@/src/lib/nonce-store';
+import { handleCorsOptions, validateRequestOrigin, withCORS } from '@/src/lib/cors';
+import { consumeSiwsNonce } from '@/src/lib/nonce-store';
 export const runtime = 'nodejs';
-
-const Body = z.object({ wallet: z.string(), signature: z.string(), message: z.string() });
 
 export const OPTIONS = handleCorsOptions;
 
 export async function POST(req: Request) {
-  let payload;
-  try {
-    payload = Body.parse(await req.json());
-  } catch {
-    return withCORS(Response.json({ error: 'Invalid payload' }, { status: 400 }), req);
+  const validation = validateRequestOrigin(req);
+  if (!validation.ok) {
+    return validation.response;
   }
-  const { wallet, signature, message } = payload;
-  const nonce = extractNonceFromMessage(message);
+
+  let payload: any;
+  try {
+    payload = await req.json();
+  } catch {
+    return withCORS(Response.json({ error: 'bad_request' }, { status: 400 }), validation.evaluation);
+  }
+
+  const fieldErrors: Record<string, string> = {};
+
+  const addressRaw = payload?.address;
+  const signatureRaw = payload?.signature;
+  const nonceRaw = payload?.nonce;
+
+  const address = typeof addressRaw === 'string' ? addressRaw.trim() : '';
+  const signature = typeof signatureRaw === 'string' ? signatureRaw.trim() : '';
+  const nonce = typeof nonceRaw === 'string' ? nonceRaw.trim() : '';
+
+  if (!address) {
+    fieldErrors.address = 'required';
+  }
+  if (!signature) {
+    fieldErrors.signature = 'required';
+  }
   if (!nonce) {
-    return withCORS(Response.json({ error: 'Bad nonce' }, { status: 400 }), req);
+    fieldErrors.nonce = 'required';
+  }
+
+  if (Object.keys(fieldErrors).length > 0) {
+    return withCORS(
+      Response.json({ error: 'bad_request', fields: fieldErrors }, { status: 400 }),
+      validation.evaluation,
+    );
   }
 
   const stored = consumeSiwsNonce(nonce);
-  if (!stored || stored.wallet !== wallet || stored.message !== message) {
-    return withCORS(Response.json({ error: 'Bad nonce' }, { status: 400 }), req);
+  if (!stored || stored.address !== address) {
+    return withCORS(Response.json({ error: 'invalid_nonce' }, { status: 400 }), validation.evaluation);
   }
 
-  const ok = verifySignature(stored.message, signature, wallet);
+  const ok = verifySignature(stored.message, signature, address);
   if (!ok) {
-    return withCORS(Response.json({ error: 'Invalid signature' }, { status: 401 }), req);
+    return withCORS(Response.json({ error: 'invalid_signature' }, { status: 400 }), validation.evaluation);
   }
 
-  const user = await upsertUserByWallet(wallet);
+  const user = await upsertUserByWallet(address);
   setSessionCookie(req, user.id);
-  return withCORS(Response.json({ user: { id: user.id, wallet } }), req);
+  return withCORS(Response.json({ user: { id: user.id, address } }), validation.evaluation);
 }

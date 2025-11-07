@@ -2,14 +2,13 @@ import type { NextRequest } from 'next/server';
 
 import { env } from '@/src/lib/env';
 
-const DEFAULT_ALLOWED_ORIGINS = ['http://localhost:3000'];
-
-const allowedOrigins = new Set(
-  [env.FRONTEND_ORIGIN, ...DEFAULT_ALLOWED_ORIGINS]
-    .filter(Boolean)
-    .map(normalizeOrigin)
-    .filter((origin): origin is string => Boolean(origin)),
-);
+const DEFAULT_ALLOWED_ORIGINS = [
+  'http://localhost:3000',
+  'https://cryptip.org',
+  'https://www.cryptip.org',
+  'https://cryptip-frontend.vercel.app',
+  'https://cryptip-frontend2.vercel.app',
+];
 
 const ALLOW_METHODS = 'GET,POST,PUT,PATCH,DELETE,OPTIONS';
 const ALLOW_HEADERS =
@@ -19,11 +18,19 @@ type RequestLike = Request | NextRequest;
 
 type CorsEvaluation = {
   origin: string | null;
+  originUrl: URL | null;
   allowed: boolean;
 };
 
-export function withCORS<T extends Response>(response: T, request?: RequestLike | null): T {
-  const evaluation = evaluateRequest(request);
+type OriginMatcher = (originUrl: URL) => boolean;
+
+const allowedOriginMatchers = buildAllowedOriginMatchers();
+
+export function withCORS<T extends Response>(
+  response: T,
+  requestOrEvaluation?: RequestLike | CorsEvaluation | null,
+): T {
+  const evaluation = resolveEvaluation(requestOrEvaluation);
 
   appendVaryHeader(response.headers, 'Origin');
 
@@ -40,48 +47,127 @@ export function withCORS<T extends Response>(response: T, request?: RequestLike 
 }
 
 export function handleCorsOptions(request: RequestLike): Response {
-  const evaluation = evaluateRequest(request);
-
-  if (!evaluation.allowed) {
-    const forbidden = new Response(null, { status: 403 });
-    return withCORS(forbidden, request);
+  const validation = validateRequestOrigin(request);
+  if (!validation.ok) {
+    return validation.response;
   }
 
   const preflight = new Response(null, { status: 204 });
-  return withCORS(preflight, request);
+  return withCORS(preflight, validation.evaluation);
+}
+
+export function validateRequestOrigin(request: RequestLike):
+  | { ok: true; evaluation: CorsEvaluation }
+  | { ok: false; response: Response } {
+  const evaluation = evaluateRequest(request);
+
+  if (!evaluation.allowed) {
+    const rejection = Response.json({ error: 'origin_not_allowed' }, { status: 400 });
+    return { ok: false, response: withCORS(rejection, evaluation) };
+  }
+
+  return { ok: true, evaluation };
+}
+
+function resolveEvaluation(requestOrEvaluation?: RequestLike | CorsEvaluation | null): CorsEvaluation {
+  if (isCorsEvaluation(requestOrEvaluation)) {
+    return requestOrEvaluation;
+  }
+
+  return evaluateRequest(requestOrEvaluation ?? null);
 }
 
 function evaluateRequest(request?: RequestLike | null): CorsEvaluation {
   if (!request) {
-    return { origin: null, allowed: true };
+    return { origin: null, originUrl: null, allowed: true };
   }
 
   const originHeader = request.headers.get('origin');
   if (!originHeader) {
-    return { origin: null, allowed: true };
+    return { origin: null, originUrl: null, allowed: true };
   }
 
-  const normalized = normalizeOrigin(originHeader);
-  if (!normalized) {
-    return { origin: null, allowed: false };
+  let originUrl: URL;
+  try {
+    originUrl = new URL(originHeader);
+  } catch {
+    return { origin: originHeader, originUrl: null, allowed: false };
   }
 
-  if (allowedOrigins.has(normalized)) {
-    return { origin: normalized, allowed: true };
+  if (allowedOriginMatchers.some((matcher) => matcher(originUrl))) {
+    return { origin: originHeader, originUrl, allowed: true };
   }
 
-  return { origin: normalized, allowed: false };
+  return { origin: originHeader, originUrl, allowed: false };
 }
 
-function normalizeOrigin(origin: string | undefined | null): string | null {
-  if (!origin) return null;
+function buildAllowedOriginMatchers(): OriginMatcher[] {
+  const allowlist = new Set(
+    [
+      ...DEFAULT_ALLOWED_ORIGINS,
+      env.FRONTEND_ORIGIN,
+      ...parseAllowlist(env.ORIGIN_ALLOWLIST),
+    ]
+      .map((value) => value?.trim())
+      .filter((value): value is string => Boolean(value)),
+  );
 
-  try {
-    const url = new URL(origin);
-    return url.origin;
-  } catch {
-    return null;
+  const matchers: OriginMatcher[] = [];
+  for (const entry of allowlist) {
+    const matcher = createOriginMatcher(entry);
+    if (matcher) {
+      matchers.push(matcher);
+    }
   }
+  return matchers;
+}
+
+function createOriginMatcher(entry: string): OriginMatcher | null {
+  let scheme: string | null = null;
+  let hostPattern = entry;
+
+  if (entry.includes('://')) {
+    try {
+      const url = new URL(entry);
+      scheme = url.protocol;
+      hostPattern = url.host;
+    } catch {
+      return null;
+    }
+  }
+
+  const hostRegex = wildcardToRegExp(hostPattern.toLowerCase());
+
+  return (originUrl: URL) => {
+    if (scheme && originUrl.protocol !== scheme) {
+      return false;
+    }
+    return hostRegex.test(originUrl.host.toLowerCase());
+  };
+}
+
+function wildcardToRegExp(pattern: string): RegExp {
+  const escaped = pattern.replace(/[-/\\^$+?.()|[\]{}]/g, '\\$&');
+  const regex = `^${escaped.replace(/\\\*/g, '.*')}$`;
+  return new RegExp(regex);
+}
+
+function parseAllowlist(raw?: string): string[] {
+  if (!raw) return [];
+  return raw
+    .split(/[,\s]+/)
+    .map((value) => value.trim())
+    .filter((value) => value.length > 0);
+}
+
+function isCorsEvaluation(value: unknown): value is CorsEvaluation {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    'allowed' in value &&
+    'origin' in value &&
+    'originUrl' in value
+  );
 }
 
 function appendVaryHeader(headers: Headers, value: string) {
