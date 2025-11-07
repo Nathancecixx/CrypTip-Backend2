@@ -13,8 +13,8 @@ const EnvSchema = z.object({
   SESSION_COOKIE_NAME: z.string().default('ctj_sess'),
 
   X402_WEBHOOK_SECRET: z.string().min(10),
-  X402_MERCHANT_USDC_ACCOUNT: z.string().min(20),
-  X402_USDC_MINT: z.string().min(20),
+  X402_MERCHANT_USDC_ACCOUNT: z.string().min(20).optional(),
+  X402_USDC_MINT: z.string().min(20).optional(),
 
   MINT_COLLECTION_ADDRESS: z.string().min(20),
   MINT_SIGNER_SECRET: z.string().min(20),

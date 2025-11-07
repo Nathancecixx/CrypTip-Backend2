@@ -86,6 +86,13 @@ export async function handleX402Webhook(req: NextRequest, deps: X402WebhookDeps 
     return new NextResponse('Transaction invalid', { status: 422 });
   }
 
+  const merchantAccount = env.X402_MERCHANT_USDC_ACCOUNT;
+  const usdcMint = env.X402_USDC_MINT;
+  if (!merchantAccount || !usdcMint) {
+    deps.log('purchase.env_missing', { purchase_id: storedPurchase.id });
+    return new NextResponse('Server misconfigured', { status: 500 });
+  }
+
   const instructions = (tx.transaction.message as any)?.instructions ?? [];
   const transferIx = instructions.find((ix: any) => ix?.program === 'spl-token' && ix?.parsed?.type === 'transfer');
 
@@ -95,7 +102,7 @@ export async function handleX402Webhook(req: NextRequest, deps: X402WebhookDeps 
     return new NextResponse('Transaction invalid', { status: 422 });
   }
 
-  if (transferInfo.destination !== env.X402_MERCHANT_USDC_ACCOUNT || transferInfo.mint !== env.X402_USDC_MINT) {
+  if (transferInfo.destination !== merchantAccount || transferInfo.mint !== usdcMint) {
     deps.log('purchase.transfer_mismatch', {
       purchase_id: storedPurchase.id,
       tx: body.tx_sig,
