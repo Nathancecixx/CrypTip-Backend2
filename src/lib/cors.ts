@@ -44,7 +44,9 @@ export function withCORS(req: NextRequest, res: NextResponse) {
     nr.headers.delete('Access-Control-Allow-Credentials');
   }
   nr.headers.set('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-  nr.headers.set('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');
+  const requestedHeaders = req.headers.get('access-control-request-headers');
+  const allowHeaders = requestedHeaders?.length ? requestedHeaders : 'Authorization, Content-Type';
+  nr.headers.set('Access-Control-Allow-Headers', allowHeaders);
   const varyValues = new Set(
     (nr.headers.get('Vary') || '')
       .split(',')

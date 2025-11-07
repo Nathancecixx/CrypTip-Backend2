@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { handleCorsOptions, withCORS } from '@/src/lib/cors';
+import { env } from '@/src/lib/env';
 
 export async function OPTIONS(req: NextRequest) {
   return handleCorsOptions(req);
@@ -20,6 +21,17 @@ export async function GET(req: NextRequest) {
     fallback: !!process.env.RPC_FALLBACK_URL,
   };
 
-  const res = NextResponse.json({ ok: true, build, db, rpc, at: new Date().toISOString() }, { status: 200 });
+  const cookies = {
+    name: env.SESSION_COOKIE_NAME,
+    maxAgeSeconds: env.SESSION_MAX_AGE,
+    sameSite: 'none' as const,
+    secure: true,
+    partitioned: true,
+  };
+
+  const res = NextResponse.json(
+    { ok: true, build, db, rpc, cookies, at: new Date().toISOString() },
+    { status: 200 }
+  );
   return withCORS(req, res);
 }

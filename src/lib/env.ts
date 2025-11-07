@@ -14,7 +14,7 @@ const EnvSchema = z.object({
   SIWS_DOMAIN: z.string().min(3),
   SESSION_COOKIE_NAME: z.string().optional(),
   SESSION_COOKIE_DOMAIN: z.string().optional(),
-  SESSION_MAX_AGE: z.coerce.number().optional(),
+  SESSION_MAX_AGE: z.coerce.number().default(60 * 15),
   COOKIE_NAME: z.string().optional(),
   FRONTEND_ORIGIN: z.string().url().default('https://cryptip-frontend.vercel.app'),
   ORIGIN_ALLOWLIST: z.string().optional(),

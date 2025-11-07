@@ -20,7 +20,7 @@ export async function OPTIONS(req: NextRequest) {
 export async function POST(req: NextRequest) {
   let userId: string;
   try {
-    ({ userId } = requireSession());
+    ({ userId } = requireSession(req));
   } catch {
     return withCORS(req, NextResponse.json({ error: 'Unauthorized' }, { status: 401 }));
   }

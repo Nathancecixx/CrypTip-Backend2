@@ -14,7 +14,7 @@ export async function GET(req: NextRequest) {
   if (!validation.ok && validation.response) return validation.response;
 
   try {
-    const { userId } = requireSession();
+    const { userId } = requireSession(req);
     const entitlements = await listEntitlements(userId);
     return withCORS(req, NextResponse.json({ me: { id: userId }, entitlements }, { status: 200 }));
   } catch {

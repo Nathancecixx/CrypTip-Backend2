@@ -1,5 +1,6 @@
 // src/lib/auth.ts
 import { createHmac, randomBytes } from 'crypto';
+import { cookies as nextCookies } from 'next/headers';
 import { NextRequest, NextResponse } from 'next/server';
 import { serialize } from 'cookie';
 import { env } from './env';
@@ -59,7 +60,7 @@ type JwtPayload = {
 export function issueSessionJWT(userId: string): string {
   const header = b64urlEncode(Buffer.from(JSON.stringify({ alg: 'HS256', typ: 'JWT' })));
   const now = Math.floor(Date.now() / 1000);
-  const sessionMaxAge = env.SESSION_MAX_AGE ?? 60 * 60 * 24 * 14;
+  const sessionMaxAge = env.SESSION_MAX_AGE ?? 60 * 15;
   const payload: JwtPayload = {
     sub: userId,
     iat: now,
@@ -101,6 +102,14 @@ export function requireSession(req?: NextRequest): { userId: string } {
     token = req.cookies.get(name)?.value;
   }
 
+  if (!token) {
+    try {
+      token = nextCookies().get(name)?.value;
+    } catch {
+      // no-op: accessing nextCookies outside request context can throw
+    }
+  }
+
   if (!token) throw new UnauthorizedError('no_session');
   const payload = verifySessionJWT(token);
   return { userId: payload.sub };
@@ -113,7 +122,7 @@ export function requireSession(req?: NextRequest): { userId: string } {
 export function setSessionCookie(res: NextResponse, token: string) {
   const domain = env.SESSION_COOKIE_DOMAIN || undefined;
   const name = env.SESSION_COOKIE_NAME || 'ctj_sess';
-  const maxAge = env.SESSION_MAX_AGE ?? 60 * 60 * 24 * 14;
+  const maxAge = env.SESSION_MAX_AGE ?? 60 * 15;
   const cookieValue = serialize(name, token, {
     httpOnly: true,
     secure: true,
