@@ -1,8 +1,8 @@
 import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
 import { handleCorsOptions, withCORS, guardOrigin, resolveAllowedRequestDomain } from '@/src/lib/cors';
-import { makeNonce, buildSiwsMessage } from '@/src/lib/auth';
-import { saveSiwsNonce } from '@/src/lib/nonce-store';
+import { buildSiwsMessage } from '@/src/lib/auth';
+import { issueNonce } from '@/src/lib/nonce-store';
 
 export async function OPTIONS(req: NextRequest) {
   return handleCorsOptions(req);
@@ -36,11 +36,17 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const nonce = makeNonce();
-  const issuedAt = new Date().toISOString();
-  const message = buildSiwsMessage(domain, normalizedAddress, nonce, issuedAt);
+  const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim();
+  const userAgent = req.headers.get('user-agent') ?? undefined;
 
-  saveSiwsNonce({ address: normalizedAddress, nonce, issuedAt });
+  const { nonce, issuedAt } = await issueNonce({
+    address: normalizedAddress,
+    domain,
+    ip: ip || undefined,
+    userAgent,
+  });
+
+  const message = buildSiwsMessage(domain, normalizedAddress, nonce, issuedAt);
 
   return withCORS(
     req,

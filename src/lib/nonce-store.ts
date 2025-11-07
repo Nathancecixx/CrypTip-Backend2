@@ -1,51 +1,44 @@
-type StoredNonceRecord = {
+import { randomBytes } from 'crypto';
+import { supa } from './db';
+import { env } from './env';
+
+type IssueNonceParams = {
   address: string;
-  nonce: string;
-  issuedAt: string;
-  expiresAt: number;
+  domain: string;
+  ip?: string;
+  userAgent?: string;
 };
 
-export const SIWS_NONCE_TTL_MS = 10 * 60 * 1000;
+type ConsumeNonceParams = {
+  address: string;
+  nonce: string;
+  domain: string;
+};
 
-declare global {
-  // eslint-disable-next-line no-var
-  var __ctjNonceStore: Map<string, StoredNonceRecord> | undefined;
+export type SiwsNonceRow = {
+  address: string;
+  nonce: string;
+  domain: string;
+  issued_at: string;
+  expires_at: string;
+  consumed_at: string | null;
+  ip: string | null;
+  user_agent: string | null;
+};
+
+function generateNonce(bytes = 16): string {
+  return randomBytes(bytes)
+    .toString('base64')
+    .replace(/=/g, '')
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_');
 }
 
-const globalStore = globalThis.__ctjNonceStore ?? new Map<string, StoredNonceRecord>();
-
-if (!globalThis.__ctjNonceStore) {
-  globalThis.__ctjNonceStore = globalStore;
-}
-
-export function saveSiwsNonce(record: Omit<StoredNonceRecord, 'expiresAt'>) {
-  cleanupExpired();
-  const storedRecord: StoredNonceRecord = {
-    ...record,
-    expiresAt: Date.now() + SIWS_NONCE_TTL_MS,
-  };
-  globalStore.set(record.address, storedRecord);
-}
-
-export function loadSiwsNonce(address: string): Omit<StoredNonceRecord, 'expiresAt'> | null {
-  cleanupExpired();
-  const stored = globalStore.get(address);
-  if (!stored) {
-    return null;
-  }
-
-  if (stored.expiresAt <= Date.now()) {
-    globalStore.delete(address);
-    return null;
-  }
-
-  const { nonce, issuedAt } = stored;
-  return { address, nonce, issuedAt };
-}
-
-export function consumeSiwsNonce(address: string) {
-  cleanupExpired();
-  globalStore.delete(address);
+function sanitizeInput(value?: string | null, maxLength = 512): string | undefined {
+  if (!value) return undefined;
+  const trimmed = value.trim();
+  if (!trimmed) return undefined;
+  return trimmed.slice(0, maxLength);
 }
 
 export function extractNonceFromMessage(message: string): string | null {
@@ -53,11 +46,80 @@ export function extractNonceFromMessage(message: string): string | null {
   return match ? match[1].trim() : null;
 }
 
-function cleanupExpired() {
-  const now = Date.now();
-  for (const [address, record] of globalStore.entries()) {
-    if (record.expiresAt <= now) {
-      globalStore.delete(address);
-    }
+export async function issueNonce({
+  address,
+  domain,
+  ip,
+  userAgent,
+}: IssueNonceParams): Promise<{ nonce: string; issuedAt: string; expiresAt: string }> {
+  const normalizedAddress = address.trim();
+  const normalizedDomain = domain.trim();
+  if (!normalizedAddress) {
+    throw new Error('address_required');
   }
+  if (!normalizedDomain) {
+    throw new Error('domain_required');
+  }
+
+  const issuedAt = new Date();
+  const expiresAt = new Date(issuedAt.getTime() + env.SIWS_NONCE_TTL_SECONDS * 1000);
+  const nonce = generateNonce();
+
+  const payload = {
+    address: normalizedAddress,
+    nonce,
+    domain: normalizedDomain,
+    issued_at: issuedAt.toISOString(),
+    expires_at: expiresAt.toISOString(),
+    consumed_at: null as string | null,
+    ip: sanitizeInput(ip, 255) ?? null,
+    user_agent: sanitizeInput(userAgent, 1024) ?? null,
+  };
+
+  const { data, error } = await supa
+    .from('siws_nonces')
+    .upsert(payload, { onConflict: 'address' })
+    .select('*')
+    .single();
+
+  if (error) {
+    throw error;
+  }
+
+  return {
+    nonce: data.nonce as string,
+    issuedAt: data.issued_at as string,
+    expiresAt: data.expires_at as string,
+  };
+}
+
+export async function consumeIfValid({ address, nonce, domain }: ConsumeNonceParams): Promise<SiwsNonceRow | null> {
+  const normalizedAddress = address.trim();
+  const normalizedDomain = domain.trim();
+  if (!normalizedAddress || !normalizedDomain) {
+    return null;
+  }
+
+  const nowIso = new Date().toISOString();
+
+  const { data, error } = await supa
+    .from('siws_nonces')
+    .update({ consumed_at: nowIso })
+    .eq('address', normalizedAddress)
+    .eq('nonce', nonce)
+    .eq('domain', normalizedDomain)
+    .is('consumed_at', null)
+    .gt('expires_at', nowIso)
+    .select('*')
+    .maybeSingle();
+
+  if (error) {
+    throw error;
+  }
+
+  if (!data) {
+    return null;
+  }
+
+  return data as SiwsNonceRow;
 }

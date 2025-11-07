@@ -87,3 +87,14 @@ create table if not exists webhook_events (
   processed boolean not null default false,
   created_at timestamptz default now()
 );
+
+create table if not exists siws_nonces (
+  address text primary key,
+  nonce text not null,
+  domain text not null,
+  issued_at timestamptz not null default now(),
+  expires_at timestamptz not null,
+  consumed_at timestamptz,
+  ip text,
+  user_agent text
+);
