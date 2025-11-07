@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { requireSession } from '@/src/lib/auth';
+import { requireSession, logUnauthorizedAccess } from '@/src/lib/auth';
 import { getPageByWallet, getUserById } from '@/src/lib/db';
 import { handleCorsOptions, validateRequestOrigin, withCORS } from '@/src/lib/cors';
 
@@ -13,7 +13,8 @@ export async function GET(req: NextRequest) {
   let userId: string;
   try {
     ({ userId } = requireSession(req));
-  } catch {
+  } catch (error) {
+    logUnauthorizedAccess(req, error);
     return withCORS(req, NextResponse.json({ error: 'unauthorized' }, { status: 401 }));
   }
 
