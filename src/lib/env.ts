@@ -11,6 +11,7 @@ const EnvSchema = z.object({
   JWT_SECRET: z.string().min(32),
   SIWS_DOMAIN: z.string().min(3),
   SESSION_COOKIE_NAME: z.string().default('ctj_sess'),
+  FRONTEND_ORIGIN: z.string().url().default('https://crytip-frontend2.vercel.app'),
 
   X402_WEBHOOK_SECRET: z.string().min(10),
   X402_MERCHANT_USDC_ACCOUNT: z.string().min(20).optional(),
@@ -35,6 +36,7 @@ export const env = EnvSchema.parse({
   JWT_SECRET: process.env.JWT_SECRET,
   SIWS_DOMAIN: process.env.SIWS_DOMAIN,
   SESSION_COOKIE_NAME: process.env.SESSION_COOKIE_NAME,
+  FRONTEND_ORIGIN: process.env.FRONTEND_ORIGIN,
 
   X402_WEBHOOK_SECRET: process.env.X402_WEBHOOK_SECRET,
   X402_MERCHANT_USDC_ACCOUNT: process.env.X402_MERCHANT_USDC_ACCOUNT,
