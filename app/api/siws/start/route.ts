@@ -23,14 +23,19 @@ export async function POST(req: NextRequest) {
 
   const domain = resolveAllowedRequestDomain(req);
 
+  const normalizedAddress = address.trim();
+  if (!normalizedAddress) {
+    return withCORS(req, NextResponse.json({ error: 'bad_request', fields: { address: 'required' } }, { status: 400 }));
+  }
+
   const nonce = makeNonce();
-  const message = buildSiwsMessage(domain, address, nonce);
+  const issuedAt = new Date().toISOString();
+  const message = buildSiwsMessage(domain, normalizedAddress, nonce, issuedAt);
 
   saveSiwsNonce({
-    address,
+    address: normalizedAddress,
     nonce,
-    issuedAt: new Date().toISOString(),
-    message,
+    issuedAt,
   });
 
   return withCORS(req, NextResponse.json({ nonce, message }, { status: 200 }));
