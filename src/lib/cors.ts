@@ -55,6 +55,7 @@ function setCorsHeaders(res: NextResponse, origin: string) {
   res.headers.set('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,OPTIONS');
   res.headers.set('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');
   res.headers.set('Vary', 'Origin');
+  res.headers.append('Vary', 'Access-Control-Request-Headers');
   return res;
 }
 

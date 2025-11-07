@@ -126,15 +126,31 @@ export async function POST(req: NextRequest) {
     const token = signHS256({ sub: userId, iat: now, exp: now + ttl, iss: 'cryptip-backend' }, secret);
 
     const res = NextResponse.json({ ok: true, userId }, { status: 200 });
+    // after you create: const res = NextResponse.json({ ok: true, userId }, { status: 200 });
+
+    const cookieDomain =
+      process.env.SESSION_COOKIE_DOMAIN && process.env.SESSION_COOKIE_DOMAIN.trim().length > 0
+        ? process.env.SESSION_COOKIE_DOMAIN.trim()
+        : undefined;
+
+    /**
+     * Important:
+     * - SameSite: 'none'  (required for cross-site)
+     * - Secure: true      (required when SameSite=None)
+     * - Domain: optional; leave undefined on Vercel preview domains.
+     *   For prod, use ".cryptip.org" if backend lives at "api.cryptip.org".
+     */
     res.cookies.set({
-      name: env.SESSION_COOKIE_NAME ?? 'cryptip.sid',
-      value: token,
+      name: process.env.SESSION_COOKIE_NAME ?? 'ctj_sess',
+      value: token,                    // your signed JWT
       httpOnly: true,
       secure: true,
-      sameSite: 'lax',
+      sameSite: 'none',
       path: '/',
-      maxAge: ttl,
+      maxAge: ttl,                     // seconds
+      ...(cookieDomain ? { domain: cookieDomain } : {}),
     });
+
 
     return withCORS(req, res);
   } catch {
