@@ -1,7 +1,9 @@
 import { z } from 'zod';
+import { NextRequest, NextResponse } from 'next/server';
 import { requireSession } from '@/src/lib/auth';
 import { createOrUpdatePage } from '@/src/lib/db';
 import { handleCorsOptions, withCORS } from '@/src/lib/cors';
+
 export const runtime = 'nodejs';
 
 const Body = z.object({
@@ -11,27 +13,29 @@ const Body = z.object({
   custom_domain: z.string().optional(),
 });
 
-export const OPTIONS = handleCorsOptions;
+export async function OPTIONS(req: NextRequest) {
+  return handleCorsOptions(req);
+}
 
-export async function POST(req: Request) {
+export async function POST(req: NextRequest) {
   let userId: string;
   try {
     ({ userId } = requireSession());
   } catch {
-    return withCORS(Response.json({ error: 'Unauthorized' }, { status: 401 }), req);
+    return withCORS(req, NextResponse.json({ error: 'Unauthorized' }, { status: 401 }));
   }
 
-  let body;
+  let body: z.infer<typeof Body>;
   try {
     body = Body.parse(await req.json());
   } catch {
-    return withCORS(Response.json({ error: 'Invalid payload' }, { status: 400 }), req);
+    return withCORS(req, NextResponse.json({ error: 'Invalid payload' }, { status: 400 }));
   }
 
   try {
     const page = await createOrUpdatePage(userId, body);
-    return withCORS(Response.json({ page }), req);
+    return withCORS(req, NextResponse.json({ page }, { status: 200 }));
   } catch {
-    return withCORS(Response.json({ error: 'Failed to save page' }, { status: 500 }), req);
+    return withCORS(req, NextResponse.json({ error: 'Failed to save page' }, { status: 500 }));
   }
 }
