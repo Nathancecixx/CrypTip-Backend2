@@ -33,6 +33,7 @@ This repo ships with `ENABLE_FAKE_MINT=1` to avoid private-key mint logic during
 - `POST /api/auth/siws/start` → { nonce, message }
 - `POST /api/auth/siws/finish` → sets HttpOnly session
 - `POST /api/pages` → create/update the page (auth)
+- `GET  /api/pages/me` → return the caller's page (auth)
 - `GET  /api/pages/:slug` → public page metadata
 - `GET  /api/me` / `/api/me/entitlements` → snapshots (auth)
 - `POST /api/store/checkout` → returns x402 tx payload (auth)
