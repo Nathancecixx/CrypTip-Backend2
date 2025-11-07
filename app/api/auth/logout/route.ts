@@ -1,4 +1,4 @@
-import { NextRequest } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { env } from '@/src/lib/env';
 import { withCORS, handleCorsOptions } from '@/src/lib/cors';
@@ -9,11 +9,10 @@ export async function OPTIONS(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   const jar = cookies();
+  // keep your existing cookie name + path semantics
   jar.delete({ name: env.SESSION_COOKIE_NAME, path: '/' });
 
-  // IMPORTANT: withCORS(req, res)  — old code had the args reversed
-  return withCORS(req, new Response(JSON.stringify({ success: true }), {
-    status: 200,
-    headers: { 'content-type': 'application/json' },
-  }));
+  // Use NextResponse (not the web Response) so the type matches withCORS
+  const res = NextResponse.json({ success: true }, { status: 200 });
+  return withCORS(req, res);
 }
