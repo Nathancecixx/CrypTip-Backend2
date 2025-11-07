@@ -1,6 +1,6 @@
 import nacl from 'tweetnacl';
 import bs58 from 'bs58';
-import jwt from 'jsonwebtoken';
+import jwt, { type JwtPayload } from 'jsonwebtoken';
 import { cookies } from 'next/headers';
 import { env } from './env';
 import { randomId } from './crypto';
@@ -19,14 +19,14 @@ export function makeNonce() {
   return randomId(16);
 }
 
-export function buildSiwsMessage(wallet: string, nonce: string): {
+export function buildSiwsMessage(address: string, nonce: string): {
   message: string;
   fields: SiwsMessageFields;
 } {
   const issuedAt = new Date().toISOString();
   const fields: SiwsMessageFields = {
     domain: env.SIWS_DOMAIN,
-    address: wallet,
+    address,
     statement: 'Sign in to Crypto Tip Jar',
     nonce,
     issuedAt,
@@ -55,21 +55,39 @@ export function verifySignature(message: string, signatureBase58: string, wallet
 }
 
 export function setSessionCookie(_req: Request, userId: string) {
-  const token = jwt.sign({ sub: userId, aud: env.SIWS_DOMAIN }, env.JWT_SECRET, { expiresIn: '15m' });
+  const token = jwt.sign({ sub: userId, aud: env.SIWS_DOMAIN }, env.SESSION_SECRET, { expiresIn: '30d' });
   cookies().set(env.SESSION_COOKIE_NAME, token, {
     httpOnly: true,
-    sameSite: 'none' as const,
+    sameSite: 'lax',
     secure: true,
     path: '/',
-    maxAge: 15 * 60,
+    maxAge: 60 * 60 * 24 * 30,
   });
 }
 
 export function requireSession(): { userId: string } {
   const token = cookies().get(env.SESSION_COOKIE_NAME)?.value;
-  if (!token) throw new Error('unauthorized');
-  const payload = jwt.verify(token, env.JWT_SECRET) as any;
-  return { userId: payload.sub as string };
+  if (!token) throw new UnauthorizedError('missing_session');
+
+  try {
+    const payload = jwt.verify(token, env.SESSION_SECRET) as JwtPayload;
+    if (!payload.sub) {
+      throw new UnauthorizedError('invalid_session');
+    }
+    return { userId: payload.sub as string };
+  } catch (error) {
+    if (error instanceof UnauthorizedError) {
+      throw error;
+    }
+    throw new UnauthorizedError('invalid_session');
+  }
+}
+
+export class UnauthorizedError extends Error {
+  constructor(message = 'unauthorized') {
+    super(message);
+    this.name = 'UnauthorizedError';
+  }
 }
 
 export function cookiePolicyForRequest(req: Request) {

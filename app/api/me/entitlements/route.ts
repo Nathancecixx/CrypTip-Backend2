@@ -1,21 +1,31 @@
 import { requireSession } from '@/src/lib/auth';
 import { listEntitlements } from '@/src/lib/db';
-import { handleCorsOptions, withCORS } from '@/src/lib/cors';
+import { handleCorsOptions, validateRequestOrigin, withCORS } from '@/src/lib/cors';
 
 export const OPTIONS = handleCorsOptions;
 
 export async function GET(req: Request) {
+  const validation = validateRequestOrigin(req);
+  if (!validation.ok) {
+    return validation.response;
+  }
+
   let userId: string;
   try {
     ({ userId } = requireSession());
   } catch {
-    return withCORS(Response.json({ error: 'Unauthorized' }, { status: 401 }), req);
+    const unauthorized = Response.json({ error: 'unauthorized' }, { status: 401 });
+    unauthorized.headers.set('WWW-Authenticate', 'Bearer realm="siws"');
+    return withCORS(unauthorized, validation.evaluation);
   }
 
   try {
     const entitlements = await listEntitlements(userId);
-    return withCORS(Response.json({ entitlements }), req);
+    return withCORS(Response.json({ entitlements }), validation.evaluation);
   } catch {
-    return withCORS(Response.json({ error: 'Failed to load entitlements' }, { status: 500 }), req);
+    return withCORS(
+      Response.json({ error: 'Failed to load entitlements' }, { status: 500 }),
+      validation.evaluation,
+    );
   }
 }
