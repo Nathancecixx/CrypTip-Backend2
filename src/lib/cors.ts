@@ -8,23 +8,25 @@ const DEFAULT_ALLOWED_ORIGINS = [
   'https://www.cryptip.org',
   'https://cryptip-frontend.vercel.app',
   'https://cryptip-frontend2.vercel.app',
+  'https://crytip-frontend2.vercel.app',
 ];
 
-const ALLOW_METHODS = 'GET,POST,PUT,PATCH,DELETE,OPTIONS';
-const ALLOW_HEADERS =
-  'Authorization, Content-Type, X-Requested-With, X-CSRF-Token, X-402-Signature, X-Idempotency-Key, Accept';
+const ALLOW_METHODS = 'GET, POST, OPTIONS';
+const ALLOW_HEADERS = 'Content-Type, Authorization, X-Requested-With';
 
 type RequestLike = Request | NextRequest;
 
-type CorsEvaluation = {
+export type CorsEvaluation = {
   origin: string | null;
   originUrl: URL | null;
   allowed: boolean;
 };
 
 type OriginMatcher = (originUrl: URL) => boolean;
+type HostMatcher = (host: string) => boolean;
 
 const allowedOriginMatchers = buildAllowedOriginMatchers();
+const allowedHostMatchers = buildAllowedHostMatchers();
 
 export function withCORS<T extends Response>(
   response: T,
@@ -122,6 +124,45 @@ function buildAllowedOriginMatchers(): OriginMatcher[] {
   return matchers;
 }
 
+function buildAllowedHostMatchers(): HostMatcher[] {
+  const allowlist = new Set(
+    [
+      ...DEFAULT_ALLOWED_ORIGINS,
+      env.FRONTEND_ORIGIN,
+      env.SIWS_DOMAIN,
+      ...parseAllowlist(env.ORIGIN_ALLOWLIST),
+    ]
+      .map((value) => value?.trim())
+      .filter((value): value is string => Boolean(value)),
+  );
+
+  const matchers: HostMatcher[] = [];
+  for (const entry of allowlist) {
+    const matcher = createHostMatcher(entry);
+    if (matcher) {
+      matchers.push(matcher);
+    }
+  }
+  return matchers;
+}
+
+function createHostMatcher(entry: string): HostMatcher | null {
+  let hostPattern = entry;
+
+  if (entry.includes('://')) {
+    try {
+      const url = new URL(entry);
+      hostPattern = url.host;
+    } catch {
+      return null;
+    }
+  }
+
+  const hostRegex = wildcardToRegExp(hostPattern.toLowerCase());
+
+  return (host: string) => hostRegex.test(host.toLowerCase());
+}
+
 function createOriginMatcher(entry: string): OriginMatcher | null {
   let scheme: string | null = null;
   let hostPattern = entry;
@@ -150,6 +191,33 @@ function wildcardToRegExp(pattern: string): RegExp {
   const escaped = pattern.replace(/[-/\\^$+?.()|[\]{}]/g, '\\$&');
   const regex = `^${escaped.replace(/\\\*/g, '.*')}$`;
   return new RegExp(regex);
+}
+
+export function resolveAllowedRequestDomain(
+  request: RequestLike,
+  evaluation?: CorsEvaluation,
+): string | null {
+  const resolved = evaluation ?? evaluateRequest(request);
+  if (resolved.allowed && resolved.originUrl) {
+    return resolved.originUrl.host;
+  }
+
+  const forwardedHost = request.headers.get('x-forwarded-host');
+  const hostHeader = forwardedHost ?? request.headers.get('host');
+  if (!hostHeader) {
+    return null;
+  }
+
+  const host = hostHeader.split(',')[0]?.trim();
+  if (!host) {
+    return null;
+  }
+
+  if (allowedHostMatchers.some((matcher) => matcher(host))) {
+    return host;
+  }
+
+  return null;
 }
 
 function parseAllowlist(raw?: string): string[] {

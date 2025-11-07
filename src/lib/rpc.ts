@@ -22,3 +22,16 @@ export async function getParsedTransaction(signature: string) {
   const conn = rpc();
   return conn.getParsedTransaction(signature, { maxSupportedTransactionVersion: 0 });
 }
+
+type RpcHealthStatus = { status: 'ok' } | { status: 'error'; error: string };
+
+export async function checkRpcHealth(): Promise<RpcHealthStatus> {
+  try {
+    const conn = rpc();
+    await conn.getEpochInfo();
+    return { status: 'ok' };
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'unknown_error';
+    return { status: 'error', error: message };
+  }
+}

@@ -19,30 +19,38 @@ export function makeNonce() {
   return randomId(16);
 }
 
-export function buildSiwsMessage(address: string, nonce: string): {
+type BuildSiwsMessageOptions = {
+  domain: string;
+  statement?: string;
+  resources?: string[];
+};
+
+export function buildSiwsMessage(address: string, nonce: string, options: BuildSiwsMessageOptions): {
   message: string;
   fields: SiwsMessageFields;
 } {
   const issuedAt = new Date().toISOString();
+  const statement = options.statement ?? 'Sign in to Crypto Tip Jar';
+  const resources = options.resources?.filter(Boolean) ?? [env.FRONTEND_ORIGIN].filter(Boolean);
   const fields: SiwsMessageFields = {
-    domain: env.SIWS_DOMAIN,
+    domain: options.domain,
     address,
-    statement: 'Sign in to Crypto Tip Jar',
+    statement,
     nonce,
     issuedAt,
     chainId: env.NEXT_PUBLIC_SOLANA_CLUSTER,
-    resources: [env.FRONTEND_ORIGIN].filter(Boolean),
+    resources,
   };
 
   const header = `${fields.domain} wants you to sign in with your Solana account:`;
   const statementBlock = `${fields.statement}`;
   const details = `Chain ID: ${fields.chainId}\nNonce: ${fields.nonce}\nIssued At: ${fields.issuedAt}`;
-  const resources =
+  const resourcesBlock =
     fields.resources.length > 0
       ? `\nResources:\n${fields.resources.map((resource) => `- ${resource}`).join('\n')}`
       : '';
 
-  const message = `${header}\n${fields.address}\n\n${statementBlock}\n\n${details}${resources}`;
+  const message = `${header}\n${fields.address}\n\n${statementBlock}\n\n${details}${resourcesBlock}`;
 
   return { message, fields };
 }
@@ -58,7 +66,7 @@ export function setSessionCookie(_req: Request, userId: string) {
   const token = jwt.sign({ sub: userId, aud: env.SIWS_DOMAIN }, env.SESSION_SECRET, { expiresIn: '30d' });
   cookies().set(env.SESSION_COOKIE_NAME, token, {
     httpOnly: true,
-    sameSite: 'lax',
+    sameSite: 'none',
     secure: true,
     path: '/',
     maxAge: 60 * 60 * 24 * 30,
