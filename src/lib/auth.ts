@@ -5,12 +5,46 @@ import { cookies } from 'next/headers';
 import { env } from './env';
 import { randomId } from './crypto';
 
+export type SiwsMessageFields = {
+  domain: string;
+  address: string;
+  statement: string;
+  nonce: string;
+  issuedAt: string;
+  chainId: string;
+  resources: string[];
+};
+
 export function makeNonce() {
   return randomId(16);
 }
 
-export function buildSiwsMessage(wallet: string, nonce: string) {
-  return `Sign in with Solana to ${env.SIWS_DOMAIN}\n\nWallet: ${wallet}\nNonce: ${nonce}\nIssued At: ${new Date().toISOString()}`;
+export function buildSiwsMessage(wallet: string, nonce: string): {
+  message: string;
+  fields: SiwsMessageFields;
+} {
+  const issuedAt = new Date().toISOString();
+  const fields: SiwsMessageFields = {
+    domain: env.SIWS_DOMAIN,
+    address: wallet,
+    statement: 'Sign in to Crypto Tip Jar',
+    nonce,
+    issuedAt,
+    chainId: env.NEXT_PUBLIC_SOLANA_CLUSTER,
+    resources: [env.FRONTEND_ORIGIN].filter(Boolean),
+  };
+
+  const header = `${fields.domain} wants you to sign in with your Solana account:`;
+  const statementBlock = `${fields.statement}`;
+  const details = `Chain ID: ${fields.chainId}\nNonce: ${fields.nonce}\nIssued At: ${fields.issuedAt}`;
+  const resources =
+    fields.resources.length > 0
+      ? `\nResources:\n${fields.resources.map((resource) => `- ${resource}`).join('\n')}`
+      : '';
+
+  const message = `${header}\n${fields.address}\n\n${statementBlock}\n\n${details}${resources}`;
+
+  return { message, fields };
 }
 
 export function verifySignature(message: string, signatureBase58: string, walletBase58: string) {
@@ -20,13 +54,12 @@ export function verifySignature(message: string, signatureBase58: string, wallet
   return nacl.sign.detached.verify(msgBytes, sig, pub);
 }
 
-export function setSessionCookie(req: Request, userId: string) {
+export function setSessionCookie(_req: Request, userId: string) {
   const token = jwt.sign({ sub: userId, aud: env.SIWS_DOMAIN }, env.JWT_SECRET, { expiresIn: '15m' });
-  const policy = cookiePolicyForRequest(req);
   cookies().set(env.SESSION_COOKIE_NAME, token, {
     httpOnly: true,
-    sameSite: policy.sameSite,
-    secure: policy.secure,
+    sameSite: 'none' as const,
+    secure: true,
     path: '/',
     maxAge: 15 * 60,
   });
