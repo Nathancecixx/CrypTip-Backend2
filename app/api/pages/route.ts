@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { requireSession } from '@/src/lib/auth';
 import { createOrUpdatePage } from '@/src/lib/db';
-import { handleCorsOptions, withCors } from '@/src/middleware/cors';
+import { handleCorsOptions, withCORS } from '@/src/lib/cors';
 export const runtime = 'nodejs';
 
 const Body = z.object({
@@ -13,25 +13,25 @@ const Body = z.object({
 
 export const OPTIONS = handleCorsOptions;
 
-export const POST = withCors(async (req: Request) => {
+export async function POST(req: Request) {
   let userId: string;
   try {
     ({ userId } = requireSession());
   } catch {
-    return Response.json({ error: 'Unauthorized' }, { status: 401 });
+    return withCORS(Response.json({ error: 'Unauthorized' }, { status: 401 }), req);
   }
 
   let body;
   try {
     body = Body.parse(await req.json());
   } catch {
-    return Response.json({ error: 'Invalid payload' }, { status: 400 });
+    return withCORS(Response.json({ error: 'Invalid payload' }, { status: 400 }), req);
   }
 
   try {
     const page = await createOrUpdatePage(userId, body);
-    return Response.json({ page });
+    return withCORS(Response.json({ page }), req);
   } catch {
-    return Response.json({ error: 'Failed to save page' }, { status: 500 });
+    return withCORS(Response.json({ error: 'Failed to save page' }, { status: 500 }), req);
   }
-});
+}
