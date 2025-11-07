@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { requireSession } from '@/src/lib/auth';
+import { requireSession, logUnauthorizedAccess } from '@/src/lib/auth';
 import { listEntitlements } from '@/src/lib/db';
 import { handleCorsOptions, validateRequestOrigin, withCORS } from '@/src/lib/cors';
 
@@ -17,7 +17,8 @@ export async function GET(req: NextRequest) {
     const { userId } = requireSession(req);
     const entitlements = await listEntitlements(userId);
     return withCORS(req, NextResponse.json({ me: { id: userId }, entitlements }, { status: 200 }));
-  } catch {
+  } catch (error) {
+    logUnauthorizedAccess(req, error);
     return withCORS(req, NextResponse.json({ error: 'unauthorized' }, { status: 401 }));
   }
 }

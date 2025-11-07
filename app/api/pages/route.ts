@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { NextRequest, NextResponse } from 'next/server';
-import { requireSession } from '@/src/lib/auth';
+import { requireSession, logUnauthorizedAccess } from '@/src/lib/auth';
 import { createOrUpdatePage } from '@/src/lib/db';
 import { handleCorsOptions, withCORS } from '@/src/lib/cors';
 
@@ -21,7 +21,8 @@ export async function POST(req: NextRequest) {
   let userId: string;
   try {
     ({ userId } = requireSession(req));
-  } catch {
+  } catch (error) {
+    logUnauthorizedAccess(req, error);
     return withCORS(req, NextResponse.json({ error: 'Unauthorized' }, { status: 401 }));
   }
 

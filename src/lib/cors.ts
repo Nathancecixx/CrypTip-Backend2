@@ -81,7 +81,12 @@ export function withCORS(req: NextRequest, res: NextResponse) {
   varyValues.add('Origin');
   if (req.method === 'OPTIONS') {
     nr.headers.set('Access-Control-Allow-Methods', ALLOW_METHODS);
-    nr.headers.set('Access-Control-Allow-Headers', ALLOW_HEADERS);
+    const requestedHeaders = req.headers.get('access-control-request-headers');
+    if (requestedHeaders) {
+      nr.headers.set('Access-Control-Allow-Headers', requestedHeaders);
+    } else {
+      nr.headers.set('Access-Control-Allow-Headers', ALLOW_HEADERS);
+    }
     varyValues.add('Access-Control-Request-Headers');
   }
   nr.headers.set('Vary', Array.from(varyValues).join(', '));

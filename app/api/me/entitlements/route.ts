@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { withCORS, handleCorsOptions, validateRequestOrigin } from '@/src/lib/cors';
-import { requireSession, UnauthorizedError } from '@/src/lib/auth';
+import { requireSession, UnauthorizedError, logUnauthorizedAccess } from '@/src/lib/auth';
 import { listEntitlements } from '@/src/lib/db';
 
 export async function OPTIONS(req: NextRequest) {
@@ -17,6 +17,7 @@ export async function GET(req: NextRequest) {
     return withCORS(req, NextResponse.json(rows, { status: 200 }));
   } catch (e) {
     if (e instanceof UnauthorizedError) {
+      logUnauthorizedAccess(req, e);
       return withCORS(req, NextResponse.json({ error: 'unauthorized' }, { status: 401 }));
     }
 

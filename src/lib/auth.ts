@@ -116,7 +116,6 @@ export function requireSession(req?: NextRequest): { userId: string } {
 }
 
 export function setSessionCookie(res: NextResponse, token: string) {
-  const domain = env.SESSION_COOKIE_DOMAIN || undefined;
   const name = env.SESSION_COOKIE_NAME || 'ctj_sess';
   const maxAge = env.SESSION_MAX_AGE ?? 60 * 15;
 
@@ -126,8 +125,32 @@ export function setSessionCookie(res: NextResponse, token: string) {
     sameSite: 'lax',
     path: '/',
     maxAge,
-    ...(domain ? { domain } : {}),
   });
 
-  res.headers.append('Set-Cookie', cookieValue);
+  // Replace any existing Set-Cookie header to guarantee the browser receives exactly
+  // one session cookie (required for the BFF to mirror it as a first-party cookie).
+  res.headers.set('Set-Cookie', cookieValue);
+}
+
+export function logUnauthorizedAccess(req: NextRequest, error: unknown) {
+  try {
+    const url = new URL(req.url);
+    const origin = req.headers.get('origin') ?? undefined;
+    const reason =
+      error instanceof UnauthorizedError
+        ? error.code
+        : typeof (error as any)?.code === 'string'
+        ? (error as any).code
+        : error instanceof Error
+        ? error.message
+        : undefined;
+
+    console.warn('auth.unauthorized', {
+      path: url.pathname,
+      origin,
+      reason,
+    });
+  } catch {
+    // logging is best-effort
+  }
 }

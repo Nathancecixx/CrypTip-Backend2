@@ -33,7 +33,10 @@ export async function handleX402Webhook(req: Request, deps: X402WebhookDeps = de
     .from('webhook_events')
     .insert({ provider: 'x402', raw_json: raw, signature_valid: valid, idempotency_key: idem });
 
-  if (!valid) return new NextResponse('Unauthorized', { status: 401 });
+  if (!valid) {
+    deps.log('webhook.unauthorized', { provider: 'x402', idempotency_key: idem });
+    return new NextResponse('Unauthorized', { status: 401 });
+  }
 
   let body: { order_id: string; sku: string; tx_sig: string; amount_atomic: number; user_wallet?: string };
   try {
