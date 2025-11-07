@@ -31,7 +31,7 @@ This repo ships with `ENABLE_FAKE_MINT=1` to avoid private-key mint logic during
 ## Routes (selected)
 
 - `POST /api/auth/siws/start` → { nonce, message }
-- `POST /api/auth/siws/finish` → sets HttpOnly session cookie `ctj_sess` (Secure, SameSite=Lax)
+- `POST /api/auth/siws/finish` → sets HttpOnly session cookie `ctj_sess` (Secure, SameSite=None)
 - `POST /api/pages` → create/update the page (auth)
 - `GET  /api/pages/me` → return the caller's page (auth)
 - `GET  /api/pages/:slug` → public page metadata
