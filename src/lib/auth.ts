@@ -1,6 +1,7 @@
 // src/lib/auth.ts
 import { createHmac, randomBytes } from 'crypto';
 import { NextRequest, NextResponse } from 'next/server';
+import { serialize } from 'cookie';
 import { env } from './env';
 
 // ---------- base64url helpers ----------
@@ -58,10 +59,11 @@ type JwtPayload = {
 export function issueSessionJWT(userId: string): string {
   const header = b64urlEncode(Buffer.from(JSON.stringify({ alg: 'HS256', typ: 'JWT' })));
   const now = Math.floor(Date.now() / 1000);
+  const sessionMaxAge = env.SESSION_MAX_AGE ?? 60 * 60 * 24 * 14;
   const payload: JwtPayload = {
     sub: userId,
     iat: now,
-    exp: now + Number(env.SESSION_MAX_AGE ?? 60 * 60 * 24 * 14), // default 14d
+    exp: now + sessionMaxAge,
     iss: 'cryptip-backend',
   };
   const payloadB64 = b64urlEncode(Buffer.from(JSON.stringify(payload)));
@@ -110,14 +112,17 @@ export function requireSession(req?: NextRequest): { userId: string } {
  */
 export function setSessionCookie(res: NextResponse, token: string) {
   const domain = env.SESSION_COOKIE_DOMAIN || undefined;
-  res.cookies.set({
-    name: env.SESSION_COOKIE_NAME || 'ctj_sess',
-    value: token,
+  const name = env.SESSION_COOKIE_NAME || 'ctj_sess';
+  const maxAge = env.SESSION_MAX_AGE ?? 60 * 60 * 24 * 14;
+  const cookieValue = serialize(name, token, {
     httpOnly: true,
     secure: true,
     sameSite: 'none',
     path: '/',
-    maxAge: Number(env.SESSION_MAX_AGE ?? 60 * 60 * 24 * 14),
+    maxAge,
+    partitioned: true,
     ...(domain ? { domain } : {}),
   });
+
+  res.headers.append('Set-Cookie', cookieValue);
 }

@@ -13,6 +13,17 @@ export type UserRow = {
   last_login: string | null;
 };
 
+export async function getUserById(id: string): Promise<Pick<UserRow, 'id' | 'wallet_pubkey' | 'handle'> | null> {
+  const { data, error } = await supa
+    .from('users')
+    .select('id, wallet_pubkey, handle')
+    .eq('id', id)
+    .maybeSingle();
+
+  if (error) throw error;
+  return (data as Pick<UserRow, 'id' | 'wallet_pubkey' | 'handle'> | null) ?? null;
+}
+
 export async function upsertUserByWallet(pubkey: string) {
   const { data, error } = await supa
     .from('users')
