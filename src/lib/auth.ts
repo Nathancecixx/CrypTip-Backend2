@@ -2,7 +2,7 @@
 import { createHmac, randomBytes } from 'crypto';
 import { cookies as nextCookies } from 'next/headers';
 import { NextRequest, NextResponse } from 'next/server';
-import { serialize } from 'cookie';
+import { serialize, type CookieSerializeOptions } from 'cookie';
 import { env } from './env';
 
 // ---------- base64url helpers ----------
@@ -131,13 +131,23 @@ export function setSessionCookie(res: NextResponse, token: string) {
   const name = env.SESSION_COOKIE_NAME || 'ctj_sess';
   const maxAge = env.SESSION_MAX_AGE ?? 60 * 15;
 
-  const cookieValue = serialize(name, token, {
+  const options: CookieSerializeOptions = {
     httpOnly: true,
     secure: true,
-    sameSite: 'lax',
+    sameSite: 'none',
     path: '/',
     maxAge,
-  });
+  };
+
+  if (env.SESSION_COOKIE_DOMAIN) {
+    options.domain = env.SESSION_COOKIE_DOMAIN;
+  }
+
+  let cookieValue = serialize(name, token, options);
+
+  if (env.EXPERIMENTAL_PARTITIONED_COOKIES) {
+    cookieValue += '; Partitioned';
+  }
 
   // Replace any existing Set-Cookie header to guarantee the browser receives exactly
   // one session cookie (required for the BFF to mirror it as a first-party cookie).
