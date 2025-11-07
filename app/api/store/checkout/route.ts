@@ -4,6 +4,7 @@ import { insertPurchase } from '@/src/lib/db';
 import { SKU, SKU_ALLOWLIST } from '@/src/constants';
 import { buildX402Payload } from '@/src/lib/x402';
 import { randomId } from '@/src/lib/crypto';
+import { corsHeaders, getAllowedOrigin, notAllowedResponse, preflight } from '@/src/lib/cors';
 export const runtime = 'nodejs';
 
 const AllowedSkus = z.enum([
@@ -20,10 +21,24 @@ const SKU_PRICE_ATOMIC: Record<(typeof SKU)[keyof typeof SKU], number> = {
   'addon.halo.v1': 5000000
 };
 
+export async function OPTIONS(req: Request) {
+  return preflight(req);
+}
+
 export async function POST(req: Request) {
-  let auth; try { auth = requireSession(); } catch { return new Response('Unauthorized', { status: 401 }); }
+  const origin = getAllowedOrigin(req);
+  if (!origin) return notAllowedResponse();
+
+  let auth;
+  try {
+    auth = requireSession();
+  } catch {
+    return new Response('Unauthorized', { status: 401, headers: corsHeaders(origin) });
+  }
   const { sku } = Body.parse(await req.json());
-  if (!SKU_ALLOWLIST.has(sku)) return new Response('Invalid SKU', { status: 400 });
+  if (!SKU_ALLOWLIST.has(sku)) {
+    return new Response('Invalid SKU', { status: 400, headers: corsHeaders(origin) });
+  }
   const idempotency_key = randomId();
   const amount = SKU_PRICE_ATOMIC[sku];
 
@@ -36,5 +51,5 @@ export async function POST(req: Request) {
   });
 
   const payload = buildX402Payload(purchase.id, sku, amount);
-  return Response.json({ order_id: purchase.id, x402: payload });
+  return Response.json({ order_id: purchase.id, x402: payload }, { headers: corsHeaders(origin) });
 }

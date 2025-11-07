@@ -22,7 +22,13 @@ export function verifySignature(message: string, signatureBase58: string, wallet
 
 export function setSessionCookie(userId: string) {
   const token = jwt.sign({ sub: userId, aud: env.SIWS_DOMAIN }, env.JWT_SECRET, { expiresIn: '15m' });
-  cookies().set(env.SESSION_COOKIE_NAME, token, { httpOnly: true, sameSite: 'lax', secure: true, path: '/' });
+  cookies().set(env.SESSION_COOKIE_NAME, token, {
+    httpOnly: true,
+    sameSite: 'none',
+    secure: true,
+    path: '/',
+    maxAge: 15 * 60,
+  });
 }
 
 export function requireSession(): { userId: string } {
