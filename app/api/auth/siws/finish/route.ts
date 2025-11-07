@@ -69,7 +69,7 @@ function signHS256(payload: object, secret: string, header: object = { alg: 'HS2
 
 function issueSessionJWT(userId: string) {
   const now = Math.floor(Date.now() / 1000);
-  const ttl = Number(env.SESSION_MAX_AGE ?? 60 * 60 * 24 * 14); // 14d default
+  const ttl = Number(process.env.SESSION_MAX_AGE ?? 60 * 60 * 24 * 14); // 14d default
   const payload = { sub: userId, iat: now, exp: now + ttl, iss: 'cryptip-backend' };
   const secret = env.SESSION_SECRET;
   if (!secret) throw new Error('SESSION_SECRET missing');
@@ -136,7 +136,7 @@ export async function POST(req: NextRequest) {
     });
 
     return withCORS(req, res);
-  } catch (e) {
+  } catch {
     // Always return CORS on error paths
     const res = NextResponse.json({ error: 'internal_error' }, { status: 500 });
     return withCORS(req, res);
