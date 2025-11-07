@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { env } from './env';
 
 const ALLOW_METHODS = 'GET,POST,OPTIONS';
-const ALLOW_HEADERS = 'Content-Type, Authorization, X-Requested-With';
+const ALLOW_HEADERS = 'content-type, authorization';
 
 function parseOrigins(value?: string | null): string[] {
   if (!value) return [];
@@ -77,19 +77,18 @@ export function withCORS(req: NextRequest, res: NextResponse) {
   varyValues.add('Origin');
   if (req.method === 'OPTIONS') {
     nr.headers.set('Access-Control-Allow-Methods', ALLOW_METHODS);
-    const requestedHeaders = req.headers.get('access-control-request-headers');
-    if (requestedHeaders) {
-      nr.headers.set('Access-Control-Allow-Headers', requestedHeaders);
-    } else {
-      nr.headers.set('Access-Control-Allow-Headers', ALLOW_HEADERS);
-    }
-    varyValues.add('Access-Control-Request-Headers');
+    nr.headers.set('Access-Control-Allow-Headers', ALLOW_HEADERS);
   }
   nr.headers.set('Vary', Array.from(varyValues).join(', '));
   return nr;
 }
 
 export async function handleCorsOptions(req: NextRequest) {
+  const validation = validateRequestOrigin(req);
+  if (!validation.ok && validation.response) {
+    return withCORS(req, validation.response);
+  }
+
   const res = new NextResponse(null, { status: 204 });
   return withCORS(req, res);
 }
