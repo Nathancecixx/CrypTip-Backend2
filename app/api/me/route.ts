@@ -1,22 +1,22 @@
 import { requireSession } from '@/src/lib/auth';
 import { listEntitlements } from '@/src/lib/db';
-import { corsHeaders, getAllowedOrigin, notAllowedResponse, preflight } from '@/src/lib/cors';
+import { handleCorsOptions, withCors } from '@/src/middleware/cors';
 export const runtime = 'nodejs';
 
-export async function OPTIONS(req: Request) {
-  return preflight(req);
-}
+export const OPTIONS = handleCorsOptions;
 
-export async function GET(req: Request) {
-  const origin = getAllowedOrigin(req);
-  if (!origin) return notAllowedResponse();
-
-  let auth;
+export const GET = withCors(async () => {
+  let userId: string;
   try {
-    auth = requireSession();
+    ({ userId } = requireSession());
   } catch {
-    return new Response('Unauthorized', { status: 401, headers: corsHeaders(origin) });
+    return Response.json({ error: 'Unauthorized' }, { status: 401 });
   }
-  const ents = await listEntitlements(auth.userId);
-  return Response.json({ me: { id: auth.userId }, entitlements: ents }, { headers: corsHeaders(origin) });
-}
+
+  try {
+    const entitlements = await listEntitlements(userId);
+    return Response.json({ me: { id: userId }, entitlements });
+  } catch {
+    return Response.json({ error: 'Failed to load profile' }, { status: 500 });
+  }
+});

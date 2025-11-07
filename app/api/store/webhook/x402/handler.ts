@@ -1,4 +1,3 @@
-import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
 
 import { verifyX402Webhook } from '@/src/lib/x402';
@@ -22,7 +21,7 @@ export const defaultDeps = {
 };
 export type X402WebhookDeps = typeof defaultDeps;
 
-export async function handleX402Webhook(req: NextRequest, deps: X402WebhookDeps = defaultDeps) {
+export async function handleX402Webhook(req: Request, deps: X402WebhookDeps = defaultDeps) {
   const raw = await req.text();
   const sig = req.headers.get('x-402-signature') ?? '';
   const idem = req.headers.get('x-idempotency-key') ?? '';

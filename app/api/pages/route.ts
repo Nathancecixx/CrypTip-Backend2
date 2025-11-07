@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { requireSession } from '@/src/lib/auth';
 import { createOrUpdatePage } from '@/src/lib/db';
-import { corsHeaders, getAllowedOrigin, notAllowedResponse, preflight } from '@/src/lib/cors';
+import { handleCorsOptions, withCors } from '@/src/middleware/cors';
 export const runtime = 'nodejs';
 
 const Body = z.object({
@@ -11,21 +11,27 @@ const Body = z.object({
   custom_domain: z.string().optional(),
 });
 
-export async function OPTIONS(req: Request) {
-  return preflight(req);
-}
+export const OPTIONS = handleCorsOptions;
 
-export async function POST(req: Request) {
-  const origin = getAllowedOrigin(req);
-  if (!origin) return notAllowedResponse();
-
-  let auth;
+export const POST = withCors(async (req: Request) => {
+  let userId: string;
   try {
-    auth = requireSession();
+    ({ userId } = requireSession());
   } catch {
-    return new Response('Unauthorized', { status: 401, headers: corsHeaders(origin) });
+    return Response.json({ error: 'Unauthorized' }, { status: 401 });
   }
-  const body = Body.parse(await req.json());
-  const page = await createOrUpdatePage(auth.userId, body);
-  return Response.json({ page }, { headers: corsHeaders(origin) });
-}
+
+  let body;
+  try {
+    body = Body.parse(await req.json());
+  } catch {
+    return Response.json({ error: 'Invalid payload' }, { status: 400 });
+  }
+
+  try {
+    const page = await createOrUpdatePage(userId, body);
+    return Response.json({ page });
+  } catch {
+    return Response.json({ error: 'Failed to save page' }, { status: 500 });
+  }
+});
