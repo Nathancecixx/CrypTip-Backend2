@@ -13,7 +13,7 @@ curl http://localhost:3000/api/health
 ```
 
 1. Create a Supabase project and run `supabase/schema.sql`.
-2. Copy `.env.example` to `.env.local` and fill values (set `FRONTEND_ORIGIN` to the site that will call the API, e.g. `https://app.example.com`).
+2. Copy `.env.example` to `.env.local` and fill values (set `FRONTEND_ORIGIN` to the site that will call the API, e.g. `https://app.example.com`). If you have multiple web frontends, set `ALLOWED_ORIGINS` to a comma-separated list (staging + prod) so browsers can make credentialed requests.
 3. Visit `/tip/<walletOrSlug>` or just `/<walletOrSlug>` (both work).
 
 ## Deploy to Vercel

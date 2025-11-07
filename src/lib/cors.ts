@@ -2,13 +2,21 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { env } from './env';
 
+const ALLOW_METHODS = 'GET,POST,OPTIONS';
+const ALLOW_HEADERS = 'Content-Type, Authorization, X-Requested-With';
+
+function parseOrigins(value?: string | null): string[] {
+  if (!value) return [];
+  return value
+    .split(',')
+    .map(origin => origin.trim())
+    .filter(Boolean);
+}
+
 function allowedOrigins(): string[] {
-  const allowlist = env.ORIGIN_ALLOWLIST || env.ALLOWED_ORIGINS;
-  if (allowlist) {
-    return allowlist
-      .split(',')
-      .map((s: string) => s.trim())
-      .filter(Boolean);
+  const explicit = parseOrigins(env.ALLOWED_ORIGINS ?? env.ORIGIN_ALLOWLIST);
+  if (explicit.length > 0) {
+    return explicit;
   }
   return env.FRONTEND_ORIGIN ? [env.FRONTEND_ORIGIN] : [];
 }
@@ -43,10 +51,6 @@ export function withCORS(req: NextRequest, res: NextResponse) {
     nr.headers.delete('Access-Control-Allow-Origin');
     nr.headers.delete('Access-Control-Allow-Credentials');
   }
-  nr.headers.set('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-  const requestedHeaders = req.headers.get('access-control-request-headers');
-  const allowHeaders = requestedHeaders?.length ? requestedHeaders : 'Authorization, Content-Type';
-  nr.headers.set('Access-Control-Allow-Headers', allowHeaders);
   const varyValues = new Set(
     (nr.headers.get('Vary') || '')
       .split(',')
@@ -54,7 +58,11 @@ export function withCORS(req: NextRequest, res: NextResponse) {
       .filter(Boolean),
   );
   varyValues.add('Origin');
-  varyValues.add('Access-Control-Request-Headers');
+  if (req.method === 'OPTIONS') {
+    nr.headers.set('Access-Control-Allow-Methods', ALLOW_METHODS);
+    nr.headers.set('Access-Control-Allow-Headers', ALLOW_HEADERS);
+    varyValues.add('Access-Control-Request-Headers');
+  }
   nr.headers.set('Vary', Array.from(varyValues).join(', '));
   return nr;
 }
