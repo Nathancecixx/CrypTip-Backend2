@@ -25,10 +25,11 @@ type BuildSiwsMessageOptions = {
   resources?: string[];
 };
 
-export function buildSiwsMessage(address: string, nonce: string, options: BuildSiwsMessageOptions): {
-  message: string;
-  fields: SiwsMessageFields;
-} {
+export function buildSiwsMessage(
+  address: string,
+  nonce: string,
+  options: BuildSiwsMessageOptions
+): { message: string; fields: SiwsMessageFields } {
   const issuedAt = new Date().toISOString();
   const statement = options.statement ?? 'Sign in to Crypto Tip Jar';
   const resources = options.resources?.filter(Boolean) ?? [env.FRONTEND_ORIGIN].filter(Boolean);
@@ -47,11 +48,10 @@ export function buildSiwsMessage(address: string, nonce: string, options: BuildS
   const details = `Chain ID: ${fields.chainId}\nNonce: ${fields.nonce}\nIssued At: ${fields.issuedAt}`;
   const resourcesBlock =
     fields.resources.length > 0
-      ? `\nResources:\n${fields.resources.map((resource) => `- ${resource}`).join('\n')}`
+      ? `\nResources:\n${fields.resources.map((r) => `- ${r}`).join('\n')}`
       : '';
 
   const message = `${header}\n${fields.address}\n\n${statementBlock}\n\n${details}${resourcesBlock}`;
-
   return { message, fields };
 }
 
@@ -62,14 +62,26 @@ export function verifySignature(message: string, signatureBase58: string, wallet
   return nacl.sign.detached.verify(msgBytes, sig, pub);
 }
 
-export function setSessionCookie(_req: Request, userId: string) {
+export function setSessionCookie(req: Request, userId: string) {
   const token = jwt.sign({ sub: userId, aud: env.SIWS_DOMAIN }, env.SESSION_SECRET, { expiresIn: '30d' });
+  const policy = cookiePolicyForRequest(req);
+
   cookies().set(env.SESSION_COOKIE_NAME, token, {
     httpOnly: true,
-    sameSite: 'none',
-    secure: true,
+    sameSite: policy.sameSite,
+    secure: policy.secure,
     path: '/',
     maxAge: 60 * 60 * 24 * 30,
+  });
+}
+
+export function clearSessionCookie(_req: Request) {
+  cookies().set(env.SESSION_COOKIE_NAME, '', {
+    httpOnly: true,
+    sameSite: 'lax',
+    secure: true,
+    path: '/',
+    maxAge: 0,
   });
 }
 
@@ -84,9 +96,7 @@ export function requireSession(): { userId: string } {
     }
     return { userId: payload.sub as string };
   } catch (error) {
-    if (error instanceof UnauthorizedError) {
-      throw error;
-    }
+    if (error instanceof UnauthorizedError) throw error;
     throw new UnauthorizedError('invalid_session');
   }
 }
@@ -98,6 +108,7 @@ export class UnauthorizedError extends Error {
   }
 }
 
+/** Chooses SameSite/Secure based on whether the request is cross-site. */
 export function cookiePolicyForRequest(req: Request) {
   const requestUrl = new URL(req.url);
   const crossSite = isCrossSiteRequest(req, requestUrl);
@@ -111,7 +122,6 @@ export function cookiePolicyForRequest(req: Request) {
 function isCrossSiteRequest(req: Request, requestUrl: URL) {
   const origin = req.headers.get('origin');
   if (!origin) return false;
-
   try {
     const originUrl = new URL(origin);
     return !urlsShareSite(originUrl, requestUrl);

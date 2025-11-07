@@ -8,6 +8,7 @@ const EnvSchema = z.object({
   NEXT_PUBLIC_SUPABASE_URL: z.string().url(),
   SUPABASE_SERVICE_ROLE_KEY: z.string().min(10),
 
+  // Sessions use SESSION_SECRET. JWT_SECRET is optional legacy compatibility.
   JWT_SECRET: z.string().min(32).optional(),
   SESSION_SECRET: z.string().min(32).optional(),
   SIWS_DOMAIN: z.string().min(3),
@@ -28,7 +29,7 @@ const EnvSchema = z.object({
   UPSTASH_REDIS_REST_TOKEN: z.string().optional(),
 });
 
-const rawEnv = EnvSchema.parse({
+const raw = EnvSchema.parse({
   NEXT_PUBLIC_SOLANA_CLUSTER: process.env.NEXT_PUBLIC_SOLANA_CLUSTER,
   RPC_PRIMARY_URL: process.env.RPC_PRIMARY_URL,
   RPC_FALLBACK_URL: process.env.RPC_FALLBACK_URL,
@@ -62,12 +63,11 @@ const {
   SESSION_SECRET: explicitSessionSecret,
   JWT_SECRET: legacyJwtSecret,
   ...rest
-} = rawEnv;
+} = raw;
 
 const sessionSecret = explicitSessionSecret ?? legacyJwtSecret;
-
 if (!sessionSecret) {
-  throw new Error('SESSION_SECRET env var is required');
+  throw new Error('SESSION_SECRET env var is required (or set JWT_SECRET for legacy).');
 }
 
 const sessionCookieName = COOKIE_NAME ?? legacySessionCookieName ?? 'ctj_sess';
