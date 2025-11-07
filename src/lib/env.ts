@@ -17,6 +17,7 @@ const EnvSchema = z.object({
   SESSION_MAX_AGE: z.coerce.number().default(60 * 15),
   SIWS_NONCE_TTL_SECONDS: z.coerce.number().int().positive().default(600),
   COOKIE_NAME: z.string().optional(),
+  EXPERIMENTAL_PARTITIONED_COOKIES: z.string().optional(),
   FRONTEND_ORIGIN: z.string().url().default('https://cryptip-frontend.vercel.app'),
   ORIGIN_ALLOWLIST: z.string().optional(),
   ALLOWED_ORIGINS: z.string().optional(),
@@ -49,6 +50,7 @@ const raw = EnvSchema.parse({
   SESSION_MAX_AGE: process.env.SESSION_MAX_AGE,
   SIWS_NONCE_TTL_SECONDS: process.env.SIWS_NONCE_TTL_SECONDS,
   COOKIE_NAME: process.env.COOKIE_NAME,
+  EXPERIMENTAL_PARTITIONED_COOKIES: process.env.EXPERIMENTAL_PARTITIONED_COOKIES,
   FRONTEND_ORIGIN: process.env.FRONTEND_ORIGIN,
   ORIGIN_ALLOWLIST: process.env.ORIGIN_ALLOWLIST,
   ALLOWED_ORIGINS: process.env.ALLOWED_ORIGINS,
@@ -70,6 +72,7 @@ const {
   COOKIE_NAME,
   SESSION_SECRET: explicitSessionSecret,
   JWT_SECRET: legacyJwtSecret,
+  EXPERIMENTAL_PARTITIONED_COOKIES,
   ...rest
 } = raw;
 
@@ -84,4 +87,5 @@ export const env = {
   ...rest,
   SESSION_SECRET: sessionSecret,
   SESSION_COOKIE_NAME: sessionCookieName,
+  EXPERIMENTAL_PARTITIONED_COOKIES: EXPERIMENTAL_PARTITIONED_COOKIES === '1',
 };
