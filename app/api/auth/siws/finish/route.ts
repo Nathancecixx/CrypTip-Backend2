@@ -4,19 +4,14 @@ import { env } from '@/src/lib/env';
 import { upsertUserByWallet } from '@/src/lib/db';
 import { handleCorsOptions, withCORS, validateRequestOrigin, resolveAllowedRequestDomain } from '@/src/lib/cors';
 import { issueSessionJWT, setSessionCookie } from '@/src/lib/auth';
-import {
-  SIWS_NONCE_TTL_MS,
-  consumeSiwsNonce,
-  extractNonceFromMessage,
-  loadSiwsNonce,
-} from '@/src/lib/nonce-store';
+import { consumeIfValid, extractNonceFromMessage } from '@/src/lib/nonce-store';
 
 import { PublicKey } from '@solana/web3.js';
 import nacl from 'tweetnacl';
 import bs58 from 'bs58';
 
 export const runtime = 'nodejs';
-const LOGIN_TTL_MS = SIWS_NONCE_TTL_MS; // 10 min TTL
+const LOGIN_TTL_MS = env.SIWS_NONCE_TTL_SECONDS * 1000; // 10 min TTL
 
 // ---------- helpers ----------
 function findHeader(message: string, labels: string[]): string | null {
@@ -268,29 +263,12 @@ export async function POST(req: NextRequest) {
       return fail(req, 400, 'nonce_invalid', context);
     }
 
-    const storedNonce = loadSiwsNonce(normalizedAddress);
-    context.hasNonce = Boolean(storedNonce);
-    if (!storedNonce) {
-      return fail(req, 400, 'nonce_invalid', context);
-    }
-
-    if (storedNonce.nonce !== normalizedNonce) {
-      return fail(req, 400, 'nonce_invalid', context);
-    }
-
     const issuedAtFromMessage = parseIssuedAt(message);
-    const issuedAtStored = Date.parse(storedNonce.issuedAt);
-    if (
-      !Number.isFinite(issuedAtStored) ||
-      issuedAtFromMessage === null ||
-      Math.abs(issuedAtStored - issuedAtFromMessage) > 1000
-    ) {
-      consumeSiwsNonce(normalizedAddress);
+    if (issuedAtFromMessage === null) {
       return fail(req, 400, 'nonce_invalid', context);
     }
 
-    if (Date.now() - issuedAtStored > LOGIN_TTL_MS) {
-      consumeSiwsNonce(normalizedAddress);
+    if (Date.now() - issuedAtFromMessage > LOGIN_TTL_MS) {
       return fail(req, 400, 'message_expired', context);
     }
 
@@ -313,12 +291,29 @@ export async function POST(req: NextRequest) {
     try {
       publicKeyBytes = new PublicKey(normalizedAddress).toBytes();
     } catch {
-      consumeSiwsNonce(normalizedAddress);
+      await consumeIfValid({ address: normalizedAddress, nonce: normalizedNonce, domain: expectedDomain });
       return fail(req, 400, 'signature_malformed', context);
     }
 
     if (!verifySignature(messageBytes, parsedSignature.bytes, publicKeyBytes)) {
       return fail(req, 400, 'bad_signature', context);
+    }
+
+    const consumed = await consumeIfValid({
+      address: normalizedAddress,
+      nonce: normalizedNonce,
+      domain: expectedDomain,
+    });
+
+    if (!consumed) {
+      return fail(req, 400, 'nonce_invalid', context);
+    }
+
+    context.hasNonce = true;
+
+    const issuedAtStored = Date.parse(consumed.issued_at);
+    if (!Number.isFinite(issuedAtStored) || Math.abs(issuedAtStored - issuedAtFromMessage) > 1000) {
+      return fail(req, 400, 'nonce_invalid', context);
     }
 
     // db upsert
@@ -338,8 +333,6 @@ export async function POST(req: NextRequest) {
       logReject('missing_session_secret', { ...context, hasNonce: false });
       return withCORS(req, NextResponse.json({ error: 'missing_session_secret' }, { status: 500 }));
     }
-
-    consumeSiwsNonce(normalizedAddress);
 
     const token = issueSessionJWT(userId);
     const res = NextResponse.json({ ok: true }, { status: 200 });
