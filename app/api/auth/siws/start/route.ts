@@ -1,5 +1,11 @@
 import { makeNonce, buildSiwsMessage } from '@/src/lib/auth';
-import { handleCorsOptions, validateRequestOrigin, withCORS } from '@/src/lib/cors';
+import { env } from '@/src/lib/env';
+import {
+  handleCorsOptions,
+  resolveAllowedRequestDomain,
+  validateRequestOrigin,
+  withCORS,
+} from '@/src/lib/cors';
 import { saveSiwsNonce } from '@/src/lib/nonce-store';
 export const runtime = 'nodejs';
 
@@ -28,21 +34,13 @@ export async function POST(req: Request) {
   }
 
   const nonce = makeNonce();
-  const { message, fields } = buildSiwsMessage(address, nonce);
+  const domain =
+    resolveAllowedRequestDomain(req, validation.evaluation) ?? validation.evaluation.originUrl?.host ??
+    env.SIWS_DOMAIN;
+  const resources = validation.evaluation.origin ? [validation.evaluation.origin] : undefined;
+  const { message, fields } = buildSiwsMessage(address, nonce, { domain, resources });
 
   saveSiwsNonce({ address, nonce, issuedAt: fields.issuedAt, message });
 
-  return withCORS(
-    Response.json({
-      nonce,
-      message,
-      domain: fields.domain,
-      statement: fields.statement,
-      address: fields.address,
-      chainId: fields.chainId,
-      issuedAt: fields.issuedAt,
-      resources: fields.resources,
-    }),
-    validation.evaluation,
-  );
+  return withCORS(Response.json({ nonce, message }), validation.evaluation);
 }

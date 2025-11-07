@@ -147,3 +147,18 @@ export async function listEntitlements(userId: string) {
   if (error) throw error;
   return data ?? [];
 }
+
+type HealthStatus = { status: 'ok' } | { status: 'error'; error: string };
+
+export async function checkDbHealth(): Promise<HealthStatus> {
+  try {
+    const { error } = await supa.from('users').select('id', { head: true, count: 'exact' });
+    if (error) {
+      throw error;
+    }
+    return { status: 'ok' };
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'unknown_error';
+    return { status: 'error', error: message };
+  }
+}
