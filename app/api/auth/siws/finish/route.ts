@@ -63,7 +63,7 @@ export async function OPTIONS(req: NextRequest) {
 export async function POST(req: NextRequest) {
   try {
     const originCheck = validateRequestOrigin(req);
-    if (!originCheck.ok && originCheck.response) return originCheck.response;
+    if (!originCheck.ok && originCheck.response) return withCORS(req, originCheck.response);
 
     let body: any;
     try {

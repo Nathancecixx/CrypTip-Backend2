@@ -116,20 +116,63 @@ export function requireSession(req?: NextRequest): { userId: string } {
 }
 
 /**
- * Sets cross-site session cookie (SameSite=None; Secure).
- * Keep domain undefined on Vercel preview subdomains.
+ * Sets the SIWS session cookie with attributes based on deployment topology.
+ * When the frontend is on a different site we emit SameSite=None + Secure + Partitioned.
+ * When the frontend shares the site we use SameSite=Lax so the cookie also works via BFF proxies.
  */
+function normalizeHost(input?: string | null): string | null {
+  if (!input) return null;
+  const trimmed = input.trim();
+  if (!trimmed) return null;
+  try {
+    return new URL(trimmed).hostname.toLowerCase();
+  } catch {
+    return trimmed.replace(/^\./, '').toLowerCase();
+  }
+}
+
+function hostsShareSite(a: string | null, b: string | null): boolean {
+  if (!a || !b) return false;
+  const hostA = a.toLowerCase();
+  const hostB = b.toLowerCase();
+  if (hostA === hostB) return true;
+  return hostA.endsWith(`.${hostB}`) || hostB.endsWith(`.${hostA}`);
+}
+
+function shouldUseCrossSiteCookies(): boolean {
+  const frontendHost = normalizeHost(env.FRONTEND_ORIGIN);
+  const cookieDomain = normalizeHost(env.SESSION_COOKIE_DOMAIN);
+  const backendDomain = normalizeHost(env.SIWS_DOMAIN);
+
+  if (!frontendHost) {
+    // Without a known frontend host default to the safer cross-site settings.
+    return true;
+  }
+
+  if (cookieDomain && hostsShareSite(frontendHost, cookieDomain)) {
+    return false;
+  }
+
+  if (backendDomain && hostsShareSite(frontendHost, backendDomain)) {
+    return false;
+  }
+
+  return true;
+}
+
 export function setSessionCookie(res: NextResponse, token: string) {
   const domain = env.SESSION_COOKIE_DOMAIN || undefined;
   const name = env.SESSION_COOKIE_NAME || 'ctj_sess';
   const maxAge = env.SESSION_MAX_AGE ?? 60 * 15;
+  const crossSite = shouldUseCrossSiteCookies();
+
   const cookieValue = serialize(name, token, {
     httpOnly: true,
     secure: true,
-    sameSite: 'none',
+    sameSite: crossSite ? 'none' : 'lax',
     path: '/',
     maxAge,
-    partitioned: true,
+    ...(crossSite ? { partitioned: true } : {}),
     ...(domain ? { domain } : {}),
   });
 
