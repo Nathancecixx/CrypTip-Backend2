@@ -105,11 +105,12 @@ const frontendUrl = new URL(rest.FRONTEND_ORIGIN);
 const normalizedFrontendOrigin = frontendUrl.origin;
 const normalizedFrontendHost = frontendUrl.host;
 
-const normalizedSiwsDomain = normalizeDomain(rest.SIWS_DOMAIN);
+let normalizedSiwsDomain = normalizeDomain(rest.SIWS_DOMAIN);
 if (normalizedSiwsDomain !== normalizedFrontendHost) {
-  throw new Error(
-    `SIWS_DOMAIN must match the host that renders authentication (expected ${normalizedFrontendHost}, got ${normalizedSiwsDomain}).`,
+  console.warn(
+    `SIWS_DOMAIN (${normalizedSiwsDomain}) does not match FRONTEND_ORIGIN host (${normalizedFrontendHost}); using frontend host.`,
   );
+  normalizedSiwsDomain = normalizedFrontendHost;
 }
 
 const allowedOriginSet = new Set<string>(parseOrigins(rest.ALLOWED_ORIGINS));
