@@ -1,29 +1,52 @@
-import { cookies } from 'next/headers';
+import { NextRequest, NextResponse } from 'next/server';
+import { handleCorsOptions, withCORS, validateRequestOrigin } from '@/src/lib/cors';
 
-import { handleCorsOptions, validateRequestOrigin, withCORS } from '@/src/lib/cors';
+export async function OPTIONS(req: NextRequest) {
+  return handleCorsOptions(req);
+}
 
-export const runtime = 'nodejs';
-
-export const OPTIONS = handleCorsOptions;
-
-export async function GET(req: Request) {
+export async function GET(req: NextRequest) {
   const validation = validateRequestOrigin(req);
-  if (!validation.ok) {
-    return validation.response;
-  }
+  if (!validation.ok && validation.response) return validation.response;
 
-  const cookieJar = cookies();
-  const cookieNames = cookieJar.getAll().map((cookie) => cookie.name);
+  const origin = req.headers.get('origin') ?? null;
+  const data = {
+    ok: true,
+    method: 'GET',
+    origin,
+    url: req.nextUrl.toString(),
+    headers: Object.fromEntries(req.headers.entries()),
+  };
 
   return withCORS(
-    Response.json(
-      {
-        origin: req.headers.get('origin'),
-        host: req.headers.get('host'),
-        cookieNames,
-      },
-      { status: 200 },
-    ),
-    validation.evaluation,
+    req,
+    NextResponse.json(data, { status: 200 })
+  );
+}
+
+export async function POST(req: NextRequest) {
+  const validation = validateRequestOrigin(req);
+  if (!validation.ok && validation.response) return validation.response;
+
+  let body: unknown = null;
+  try {
+    body = await req.json();
+  } catch {
+    /* non-JSON bodies will be null */
+  }
+
+  const origin = req.headers.get('origin') ?? null;
+  const data = {
+    ok: true,
+    method: 'POST',
+    origin,
+    url: req.nextUrl.toString(),
+    headers: Object.fromEntries(req.headers.entries()),
+    body,
+  };
+
+  return withCORS(
+    req,
+    NextResponse.json(data, { status: 200 })
   );
 }
