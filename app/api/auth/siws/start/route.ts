@@ -1,7 +1,6 @@
 import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
 import { handleCorsOptions, withCORS, guardOrigin, resolveAllowedRequestDomain } from '@/src/lib/cors';
-import { env } from '@/src/lib/env';
 import { makeNonce, buildSiwsMessage } from '@/src/lib/auth';
 import { saveSiwsNonce } from '@/src/lib/nonce-store';
 
@@ -24,12 +23,24 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const domain = resolveAllowedRequestDomain(req) ?? env.SIWS_DOMAIN;
+  const domain = resolveAllowedRequestDomain(req);
+
+  const normalizedAddress = address.trim();
+  if (!normalizedAddress) {
+    return withCORS(
+      req,
+      new NextResponse(JSON.stringify({ error: 'bad_request', fields: { address: 'required' } }), {
+        status: 400,
+        headers: { 'content-type': 'application/json' },
+      }),
+    );
+  }
 
   const nonce = makeNonce();
-  const message = buildSiwsMessage(domain, address, nonce);
+  const issuedAt = new Date().toISOString();
+  const message = buildSiwsMessage(domain, normalizedAddress, nonce, issuedAt);
 
-  saveSiwsNonce({ address, nonce, issuedAt: new Date().toISOString(), message });
+  saveSiwsNonce({ address: normalizedAddress, nonce, issuedAt, message });
 
   return withCORS(
     req,
