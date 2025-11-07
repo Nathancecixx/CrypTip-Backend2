@@ -45,12 +45,12 @@ export function buildSiwsMessage(address: string, nonce: string, options: BuildS
   const header = `${fields.domain} wants you to sign in with your Solana account:`;
   const statementBlock = `${fields.statement}`;
   const details = `Chain ID: ${fields.chainId}\nNonce: ${fields.nonce}\nIssued At: ${fields.issuedAt}`;
-  const resources =
+  const resourcesBlock =
     fields.resources.length > 0
       ? `\nResources:\n${fields.resources.map((resource) => `- ${resource}`).join('\n')}`
       : '';
 
-  const message = `${header}\n${fields.address}\n\n${statementBlock}\n\n${details}${resources}`;
+  const message = `${header}\n${fields.address}\n\n${statementBlock}\n\n${details}${resourcesBlock}`;
 
   return { message, fields };
 }
