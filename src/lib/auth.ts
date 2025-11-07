@@ -139,13 +139,9 @@ export function setSessionCookie(res: NextResponse, token: string) {
     maxAge,
   };
 
-  if (env.SESSION_COOKIE_DOMAIN) {
-    options.domain = env.SESSION_COOKIE_DOMAIN;
-  }
-
   let cookieValue = serialize(name, token, options);
 
-  if (env.EXPERIMENTAL_PARTITIONED_COOKIES) {
+  if (process.env.EXPERIMENTAL_PARTITIONED_COOKIES === '1') {
     cookieValue += '; Partitioned';
   }
 
