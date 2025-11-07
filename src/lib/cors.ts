@@ -3,8 +3,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { env } from './env';
 
 function allowedOrigins(): string[] {
-  if (env.ALLOWED_ORIGINS) {
-    return env.ALLOWED_ORIGINS.split(',').map(s => s.trim()).filter(Boolean);
+  const raw = env.ORIGIN_ALLOWLIST || env.ALLOWED_ORIGINS;
+  if (raw) {
+    return raw.split(',').map(s => s.trim()).filter(Boolean);
   }
   return env.FRONTEND_ORIGIN ? [env.FRONTEND_ORIGIN] : [];
 }
@@ -14,7 +15,10 @@ export function validateRequestOrigin(req: NextRequest) {
   const list = allowedOrigins();
   const ok = !origin || list.length === 0 || list.includes(origin);
   if (!ok) {
-    const res = NextResponse.json({ error: 'cors_origin_not_allowed' }, { status: 400 });
+    const res = withCORS(
+      req,
+      NextResponse.json({ error: 'cors_origin_not_allowed' }, { status: 400 })
+    );
     res.headers.set('Vary', 'Origin');
     return { ok, response: res, evaluation: { origin } };
   }
@@ -46,7 +50,21 @@ export async function handleCorsOptions(req: NextRequest) {
   return withCORS(req, res);
 }
 
-export function resolveAllowedRequestDomain(req: NextRequest): string {
-  const host = new URL(req.url).host;
-  return env.SIWS_DOMAIN ?? host;
+type OriginEvaluation = { origin?: string | undefined } | undefined;
+
+export function resolveAllowedRequestDomain(req: NextRequest, evaluation?: OriginEvaluation): string {
+  if (env.SIWS_DOMAIN) {
+    return env.SIWS_DOMAIN;
+  }
+
+  const origin = evaluation?.origin ?? req.headers.get('origin') ?? '';
+  if (origin) {
+    try {
+      return new URL(origin).host;
+    } catch {
+      // fall through to request host
+    }
+  }
+
+  return new URL(req.url).host;
 }

@@ -31,20 +31,35 @@ export function makeNonce(bytes = 16): string {
   return b64urlEncode(randomBytes(bytes));
 }
 
+type BuildSiwsMessageOptions = {
+  domain: string;
+  issuedAt?: string;
+  statement?: string;
+  resources?: string[];
+};
+
 export function buildSiwsMessage(
-  domain: string,
   address: string,
   nonce: string,
-  issuedAt: string = new Date().toISOString()
-): string {
-  return `Sign-In With Solana
+  { domain, issuedAt, statement, resources }: BuildSiwsMessageOptions
+): { message: string; issuedAt: string } {
+  const issued = issuedAt ?? new Date().toISOString();
+  const summary =
+    statement ?? 'By signing this message you prove you control the wallet above.';
+  const resourcesBlock = resources && resources.length
+    ? `\nResources:\n${resources.map(r => `- ${r}`).join('\n')}`
+    : '';
+
+  const message = `Sign-In With Solana
 
 Domain: ${domain}
 Address: ${address}
 Nonce: ${nonce}
-Issued At: ${issuedAt}
+Issued At: ${issued}${resourcesBlock}
 
-By signing this message you prove you control the wallet above.`;
+${summary}`;
+
+  return { message, issuedAt: issued };
 }
 
 // ---------- Session (JWT HS256 minimal) ----------

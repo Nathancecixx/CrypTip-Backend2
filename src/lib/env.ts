@@ -11,11 +11,14 @@ const EnvSchema = z.object({
   // Sessions use SESSION_SECRET. JWT_SECRET is optional legacy compatibility.
   JWT_SECRET: z.string().min(32).optional(),
   SESSION_SECRET: z.string().min(32).optional(),
+  SESSION_MAX_AGE: z.coerce.number().optional(),
+  SESSION_COOKIE_DOMAIN: z.string().min(1).optional(),
   SIWS_DOMAIN: z.string().min(3),
   SESSION_COOKIE_NAME: z.string().optional(),
   COOKIE_NAME: z.string().optional(),
   FRONTEND_ORIGIN: z.string().url().default('https://cryptip-frontend.vercel.app'),
   ORIGIN_ALLOWLIST: z.string().optional(),
+  ALLOWED_ORIGINS: z.string().optional(),
 
   X402_WEBHOOK_SECRET: z.string().min(10),
   X402_MERCHANT_USDC_ACCOUNT: z.string().min(20).optional(),
@@ -39,11 +42,14 @@ const raw = EnvSchema.parse({
 
   JWT_SECRET: process.env.JWT_SECRET,
   SESSION_SECRET: process.env.SESSION_SECRET,
+  SESSION_MAX_AGE: process.env.SESSION_MAX_AGE,
+  SESSION_COOKIE_DOMAIN: process.env.SESSION_COOKIE_DOMAIN,
   SIWS_DOMAIN: process.env.SIWS_DOMAIN,
   SESSION_COOKIE_NAME: process.env.SESSION_COOKIE_NAME,
   COOKIE_NAME: process.env.COOKIE_NAME,
   FRONTEND_ORIGIN: process.env.FRONTEND_ORIGIN,
   ORIGIN_ALLOWLIST: process.env.ORIGIN_ALLOWLIST,
+  ALLOWED_ORIGINS: process.env.ALLOWED_ORIGINS,
 
   X402_WEBHOOK_SECRET: process.env.X402_WEBHOOK_SECRET,
   X402_MERCHANT_USDC_ACCOUNT: process.env.X402_MERCHANT_USDC_ACCOUNT,
@@ -62,6 +68,8 @@ const {
   COOKIE_NAME,
   SESSION_SECRET: explicitSessionSecret,
   JWT_SECRET: legacyJwtSecret,
+  ORIGIN_ALLOWLIST,
+  ALLOWED_ORIGINS,
   ...rest
 } = raw;
 
@@ -71,9 +79,12 @@ if (!sessionSecret) {
 }
 
 const sessionCookieName = COOKIE_NAME ?? legacySessionCookieName ?? 'ctj_sess';
+const originAllowlist = ALLOWED_ORIGINS ?? ORIGIN_ALLOWLIST;
 
 export const env = {
   ...rest,
   SESSION_SECRET: sessionSecret,
   SESSION_COOKIE_NAME: sessionCookieName,
+  ORIGIN_ALLOWLIST: originAllowlist,
+  ALLOWED_ORIGINS: originAllowlist,
 };

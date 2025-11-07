@@ -1,45 +1,39 @@
-import type { NextRequest } from 'next/server';
-import { NextResponse } from 'next/server';
-import { handleCorsOptions, withCORS, guardOrigin } from '@/src/lib/cors';
-import { env } from '@/src/lib/env';
+import { NextRequest, NextResponse } from 'next/server';
+
 import { makeNonce, buildSiwsMessage } from '@/src/lib/auth';
+import { handleCorsOptions, resolveAllowedRequestDomain, validateRequestOrigin, withCORS } from '@/src/lib/cors';
+import { env } from '@/src/lib/env';
 import { saveSiwsNonce } from '@/src/lib/nonce-store';
 
-export async function OPTIONS(req: NextRequest) {
-  return handleCorsOptions(req);
-}
+export const runtime = 'nodejs';
+export const OPTIONS = handleCorsOptions;
 
 export async function POST(req: NextRequest) {
-  const guard = guardOrigin(req);
-  if (!guard.ok) return withCORS(req, guard.res);
+  const validation = validateRequestOrigin(req);
+  if (!validation.ok && validation.response) {
+    return validation.response;
+  }
 
-  const { address } = await req.json().catch(() => ({} as any));
-  if (!address || typeof address !== 'string') {
+  const body = await req.json().catch(() => ({} as Record<string, unknown>));
+  const address = typeof body.address === 'string' ? body.address.trim() : '';
+  if (!address) {
     return withCORS(
       req,
-      new NextResponse(JSON.stringify({ error: 'bad_request', fields: { address: 'required' } }), {
-        status: 400,
-        headers: { 'content-type': 'application/json' },
-      }),
+      NextResponse.json(
+        { error: 'bad_request', fields: { address: 'required' } },
+        { status: 400 }
+      )
     );
   }
 
-  const origin = req.headers.get('origin') ?? env.FRONTEND_ORIGIN;
-  const domain = new URL(origin).host;
-
+  const domain = resolveAllowedRequestDomain(req, validation.evaluation);
   const nonce = makeNonce();
-  const { message } = buildSiwsMessage(address, nonce, {
+  const { message, issuedAt } = buildSiwsMessage(address, nonce, {
     domain,
-    resources: [env.FRONTEND_ORIGIN],
+    resources: env.FRONTEND_ORIGIN ? [env.FRONTEND_ORIGIN] : undefined,
   });
 
-  saveSiwsNonce({ address, nonce, message, issuedAt: new Date().toISOString() });
+  saveSiwsNonce({ address, domain, nonce, issuedAt, message });
 
-  return withCORS(
-    req,
-    new NextResponse(JSON.stringify({ nonce, message }), {
-      status: 200,
-      headers: { 'content-type': 'application/json' },
-    }),
-  );
+  return withCORS(req, NextResponse.json({ domain, nonce, message }, { status: 200 }));
 }

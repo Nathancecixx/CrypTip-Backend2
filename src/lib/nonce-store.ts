@@ -3,6 +3,7 @@ type StoredNonceRecord = {
   nonce: string;
   issuedAt: string;
   message: string;
+  domain: string;
   expiresAt: number;
 };
 
@@ -37,8 +38,8 @@ export function consumeSiwsNonce(nonce: string): Omit<StoredNonceRecord, 'expire
     return null;
   }
 
-  const { address, message, issuedAt } = stored;
-  return { address, nonce, message, issuedAt };
+  const { address, message, issuedAt, domain } = stored;
+  return { address, nonce, message, issuedAt, domain };
 }
 
 export function extractNonceFromMessage(message: string): string | null {
