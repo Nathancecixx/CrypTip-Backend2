@@ -1,46 +1,45 @@
-import { makeNonce, buildSiwsMessage } from '@/src/lib/auth';
+import type { NextRequest } from 'next/server';
+import { NextResponse } from 'next/server';
+import { handleCorsOptions, withCORS, guardOrigin } from '@/src/lib/cors';
 import { env } from '@/src/lib/env';
-import {
-  handleCorsOptions,
-  resolveAllowedRequestDomain,
-  validateRequestOrigin,
-  withCORS,
-} from '@/src/lib/cors';
+import { makeNonce, buildSiwsMessage } from '@/src/lib/auth';
 import { saveSiwsNonce } from '@/src/lib/nonce-store';
-export const runtime = 'nodejs';
 
-export const OPTIONS = handleCorsOptions;
+export async function OPTIONS(req: NextRequest) {
+  return handleCorsOptions(req);
+}
 
-export async function POST(req: Request) {
-  const validation = validateRequestOrigin(req);
-  if (!validation.ok) {
-    return validation.response;
-  }
+export async function POST(req: NextRequest) {
+  const guard = guardOrigin(req);
+  if (!guard.ok) return withCORS(req, guard.res);
 
-  let payload: any;
-  try {
-    payload = await req.json();
-  } catch {
-    return withCORS(Response.json({ error: 'bad_request' }, { status: 400 }), validation.evaluation);
-  }
-
-  const address = typeof payload?.address === 'string' ? payload.address.trim() : '';
-
-  if (!address) {
+  const { address } = await req.json().catch(() => ({} as any));
+  if (!address || typeof address !== 'string') {
     return withCORS(
-      Response.json({ error: 'bad_request', fields: { address: 'required' } }, { status: 400 }),
-      validation.evaluation,
+      req,
+      new NextResponse(JSON.stringify({ error: 'bad_request', fields: { address: 'required' } }), {
+        status: 400,
+        headers: { 'content-type': 'application/json' },
+      }),
     );
   }
 
+  const origin = req.headers.get('origin') ?? env.FRONTEND_ORIGIN;
+  const domain = new URL(origin).host;
+
   const nonce = makeNonce();
-  const domain =
-    resolveAllowedRequestDomain(req, validation.evaluation) ?? validation.evaluation.originUrl?.host ??
-    env.SIWS_DOMAIN;
-  const resources = validation.evaluation.origin ? [validation.evaluation.origin] : undefined;
-  const { message, fields } = buildSiwsMessage(address, nonce, { domain, resources });
+  const { message } = buildSiwsMessage(address, nonce, {
+    domain,
+    resources: [env.FRONTEND_ORIGIN],
+  });
 
-  saveSiwsNonce({ address, nonce, issuedAt: fields.issuedAt, message });
+  saveSiwsNonce({ address, nonce, message, issuedAt: new Date().toISOString() });
 
-  return withCORS(Response.json({ nonce, message }), validation.evaluation);
+  return withCORS(
+    req,
+    new NextResponse(JSON.stringify({ nonce, message }), {
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+    }),
+  );
 }
