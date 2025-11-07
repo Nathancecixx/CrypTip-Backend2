@@ -28,10 +28,7 @@ export async function POST(req: NextRequest) {
   const domain = new URL(origin).host;
 
   const nonce = makeNonce();
-  const { message } = buildSiwsMessage(address, nonce, {
-    domain,
-    resources: [env.FRONTEND_ORIGIN],
-  });
+  const message = buildSiwsMessage(domain, address, nonce);
 
   saveSiwsNonce({ address, nonce, message, issuedAt: new Date().toISOString() });
 

@@ -20,7 +20,7 @@ export function validateRequestOrigin(req: NextRequest) {
   if (!ok) {
     const res = NextResponse.json({ error: 'cors_origin_not_allowed' }, { status: 400 });
     res.headers.set('Vary', 'Origin');
-    return { ok, response: res, evaluation: { origin } };
+    return { ok, response: res, res, evaluation: { origin } };
   }
   return { ok, evaluation: { origin } };
 }
