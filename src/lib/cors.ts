@@ -1,10 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { env } from '@/src/lib/env';
 
-/**
- * Comma-separated list in ORIGIN_ALLOWLIST (optional), plus FRONTEND_ORIGIN (required).
- * Supports wildcards like https://*.vercel.app and https://crytip-frontend2-*.vercel.app
- */
+/** ---------- Allowlist + matching ---------- */
+
 function getAllowlist(): string[] {
   const list = (env.ORIGIN_ALLOWLIST ?? '')
     .split(',')
@@ -16,26 +14,31 @@ function getAllowlist(): string[] {
   return list;
 }
 
+function defaultPort(u: URL) {
+  return u.protocol === 'https:' ? '443' : u.protocol === 'http:' ? '80' : '';
+}
+
 function originMatchesPattern(origin: string, pattern: string): boolean {
   try {
     const o = new URL(origin);
-    const p = new URL(pattern.replace('*.', 'WILDCARD.'));
-    if (o.protocol !== p.protocol) return false;
-
-    // wildcard subdomain matching
-    const ph = p.hostname;
-    if (ph.startsWith('WILDCARD.')) {
-      const bare = ph.replace('WILDCARD.', '');
-      return o.hostname === bare || o.hostname.endsWith('.' + bare);
+    // Support wildcard subdomains like https://*.vercel.app
+    const wildcard = pattern.startsWith('http://*.') || pattern.startsWith('https://*.');
+    if (wildcard) {
+      const scheme = pattern.split('://')[0] + '://';
+      const host = pattern.replace(/^https?:\/\/\*\./, '');
+      const p = new URL(scheme + host);
+      if (o.protocol !== p.protocol) return false;
+      return o.hostname === p.hostname || o.hostname.endsWith('.' + p.hostname);
     }
-    return o.hostname === p.hostname && (o.port || defaultPort(o)) === (p.port || defaultPort(p));
+    const p = new URL(pattern);
+    return (
+      o.protocol === p.protocol &&
+      o.hostname === p.hostname &&
+      (o.port || defaultPort(o)) === (p.port || defaultPort(p))
+    );
   } catch {
     return false;
   }
-}
-
-function defaultPort(u: URL) {
-  return u.protocol === 'https:' ? '443' : u.protocol === 'http:' ? '80' : '';
 }
 
 function isAllowedOrigin(origin: string | null): boolean {
@@ -43,6 +46,8 @@ function isAllowedOrigin(origin: string | null): boolean {
   const allow = getAllowlist();
   return allow.some(p => p === origin || originMatchesPattern(origin, p));
 }
+
+/** ---------- Header helpers ---------- */
 
 function setCorsHeaders(res: NextResponse, origin: string) {
   res.headers.set('Access-Control-Allow-Origin', origin);
@@ -53,7 +58,9 @@ function setCorsHeaders(res: NextResponse, origin: string) {
   return res;
 }
 
-/** Always handle OPTIONS; return 204 with headers if origin is allowed, else 403 (still with Vary header). */
+/** ---------- Primary APIs (new) ---------- */
+
+/** Always handle OPTIONS with a 204 if origin is allowed, else 403 with Vary: Origin. */
 export function handleCorsOptions(req: NextRequest) {
   const origin = req.headers.get('origin');
   if (isAllowedOrigin(origin)) {
@@ -67,24 +74,27 @@ export function handleCorsOptions(req: NextRequest) {
   return res;
 }
 
-/** Wrap any response with CORS headers when origin is allowed. */
-export function withCORS(req: NextRequest, res: NextResponse) {
+/**
+ * Wrap a response with CORS headers for allowed origins.
+ * Back-compat OVERLOAD: accepts either (req, res) or (res, req).
+ */
+export function withCORS(a: NextRequest | NextResponse, b?: NextResponse | NextRequest): NextResponse {
+  const isReqFirst = typeof (a as any)?.nextUrl !== 'undefined'; // crude but effective
+  const req = (isReqFirst ? a : b) as NextRequest | undefined;
+  const res = (isReqFirst ? b : a) as NextResponse | undefined;
+
+  if (!req || !res) throw new Error('withCORS requires a NextRequest and NextResponse');
+
   const origin = req.headers.get('origin');
-  if (isAllowedOrigin(origin)) {
-    return setCorsHeaders(res, origin!);
-  }
-  // Return response as-is (browser will block if cross-site and not allowed).
+  if (isAllowedOrigin(origin)) return setCorsHeaders(res, origin!);
   res.headers.set('Vary', 'Origin');
   return res;
 }
 
-/**
- * Validate request origin for non-OPTIONS methods. If not allowed, return a 403
- * that still includes Vary: Origin (avoids “missing allow origin” confusion).
- */
+/** Guard for non-OPTIONS methods: 200 if allowed; else 403 with Vary: Origin. */
 export function guardOrigin(req: NextRequest): { ok: true } | { ok: false; res: NextResponse } {
-  const origin = req.headers.get('origin');
   if (req.method === 'OPTIONS') return { ok: true };
+  const origin = req.headers.get('origin');
   if (isAllowedOrigin(origin)) return { ok: true };
   const res = new NextResponse(JSON.stringify({ error: 'origin_not_allowed', origin }), {
     status: 403,
@@ -92,4 +102,49 @@ export function guardOrigin(req: NextRequest): { ok: true } | { ok: false; res: 
   });
   res.headers.set('Vary', 'Origin');
   return { ok: false, res };
+}
+
+/** ---------- Back-compat shims (old API many files still import) ---------- */
+
+/**
+ * Old helper many routes import. Returns { ok, response?, evaluation }.
+ * evaluation is kept only for callsites that log it; not strictly required.
+ */
+export function validateRequestOrigin(req: NextRequest): {
+  ok: boolean;
+  response?: NextResponse;
+  evaluation: { origin: string | null; allowed: boolean };
+} {
+  const origin = req.headers.get('origin');
+  const allowed = isAllowedOrigin(origin);
+  if (req.method === 'OPTIONS') {
+    // Callers should be using handleCorsOptions() for OPTIONS, but keep this permissive.
+    return { ok: true, evaluation: { origin, allowed: true } };
+  }
+  if (allowed) return { ok: true, evaluation: { origin, allowed: true } };
+
+  const response = new NextResponse(JSON.stringify({ error: 'origin_not_allowed', origin }), {
+    status: 403,
+    headers: { 'content-type': 'application/json' },
+  });
+  response.headers.set('Vary', 'Origin');
+  return { ok: false, response, evaluation: { origin, allowed: false } };
+}
+
+/** Old helper: pick a domain to embed in SIWS messages based on request origin. */
+export function resolveAllowedRequestDomain(req: NextRequest, ev?: { origin: string | null }) {
+  const origin = ev?.origin ?? req.headers.get('origin');
+  if (origin && isAllowedOrigin(origin)) {
+    try {
+      return new URL(origin).host;
+    } catch {
+      /* no-op */
+    }
+  }
+  // Fallback to configured SIWS domain
+  try {
+    return new URL(env.FRONTEND_ORIGIN).host;
+  } catch {
+    return env.SIWS_DOMAIN;
+  }
 }
