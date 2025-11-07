@@ -3,7 +3,6 @@ import { createHmac, randomBytes } from 'crypto';
 import { NextResponse } from 'next/server';
 import { env } from './env';
 
-type BuildSiwsMessageOptions = {
 // Base64url helper
 const b64url = (buf: Buffer) =>
   buf.toString('base64').replace(/=/g, '').replace(/\+/g, '-').replace(/\//g, '_');
