@@ -23,7 +23,7 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const domain = resolveAllowedRequestDomain(req);
+  const expectedDomain = resolveAllowedRequestDomain(req);
 
   const normalizedAddress = address.trim();
   if (!normalizedAddress) {
@@ -41,12 +41,12 @@ export async function POST(req: NextRequest) {
 
   const { nonce, issuedAt } = await issueNonce({
     address: normalizedAddress,
-    domain,
+    domain: expectedDomain,
     ip: ip || undefined,
     userAgent,
   });
 
-  const message = buildSiwsMessage(domain, normalizedAddress, nonce, issuedAt);
+  const message = buildSiwsMessage(expectedDomain, normalizedAddress, nonce, issuedAt);
 
   return withCORS(
     req,
