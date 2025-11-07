@@ -40,7 +40,7 @@ export async function POST(req: NextRequest) {
   const issuedAt = new Date().toISOString();
   const message = buildSiwsMessage(domain, normalizedAddress, nonce, issuedAt);
 
-  saveSiwsNonce({ address: normalizedAddress, nonce, issuedAt, message });
+  saveSiwsNonce({ address: normalizedAddress, nonce, issuedAt });
 
   return withCORS(
     req,

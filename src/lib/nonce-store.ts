@@ -2,11 +2,10 @@ type StoredNonceRecord = {
   address: string;
   nonce: string;
   issuedAt: string;
-  message: string;
   expiresAt: number;
 };
 
-const TTL_MS = 15 * 60 * 1000;
+export const SIWS_NONCE_TTL_MS = 10 * 60 * 1000;
 
 declare global {
   // eslint-disable-next-line no-var
@@ -23,7 +22,7 @@ export function saveSiwsNonce(record: Omit<StoredNonceRecord, 'expiresAt'>) {
   cleanupExpired();
   const storedRecord: StoredNonceRecord = {
     ...record,
-    expiresAt: Date.now() + TTL_MS,
+    expiresAt: Date.now() + SIWS_NONCE_TTL_MS,
   };
   globalStore.set(record.address, storedRecord);
 }
@@ -40,8 +39,8 @@ export function loadSiwsNonce(address: string): Omit<StoredNonceRecord, 'expires
     return null;
   }
 
-  const { nonce, message, issuedAt } = stored;
-  return { address, nonce, message, issuedAt };
+  const { nonce, issuedAt } = stored;
+  return { address, nonce, issuedAt };
 }
 
 export function consumeSiwsNonce(address: string) {
@@ -56,9 +55,9 @@ export function extractNonceFromMessage(message: string): string | null {
 
 function cleanupExpired() {
   const now = Date.now();
-  for (const [nonce, record] of globalStore.entries()) {
+  for (const [address, record] of globalStore.entries()) {
     if (record.expiresAt <= now) {
-      globalStore.delete(nonce);
+      globalStore.delete(address);
     }
   }
 }

@@ -39,14 +39,26 @@ export function buildSiwsMessage(
   nonce: string,
   issuedAt: string = new Date().toISOString()
 ): string {
-  return `Sign-In With Solana
+  const issuedAtIso = (() => {
+    try {
+      const parsed = new Date(issuedAt);
+      if (!Number.isNaN(parsed.getTime())) {
+        return parsed.toISOString();
+      }
+    } catch {
+      // fall through to new Date() below
+    }
+    return new Date().toISOString();
+  })();
 
-Domain: ${domain}
-Address: ${address}
-Nonce: ${nonce}
-Issued At: ${issuedAt}
-
-By signing this message you prove you control the wallet above.`;
+  return (
+    'Sign-In With Solana\n\n' +
+    `Domain: ${domain}\n` +
+    `Address: ${address}\n` +
+    `Nonce: ${nonce}\n` +
+    `Issued At: ${issuedAtIso}\n\n` +
+    'By signing this message you prove you control the wallet above.'
+  );
 }
 
 // ---------- Session (JWT HS256 minimal) ----------

@@ -4,14 +4,19 @@ import { env } from '@/src/lib/env';
 import { upsertUserByWallet } from '@/src/lib/db';
 import { handleCorsOptions, withCORS, validateRequestOrigin, resolveAllowedRequestDomain } from '@/src/lib/cors';
 import { issueSessionJWT, setSessionCookie } from '@/src/lib/auth';
-import { consumeSiwsNonce, extractNonceFromMessage, loadSiwsNonce } from '@/src/lib/nonce-store';
+import {
+  SIWS_NONCE_TTL_MS,
+  consumeSiwsNonce,
+  extractNonceFromMessage,
+  loadSiwsNonce,
+} from '@/src/lib/nonce-store';
 
 import { PublicKey } from '@solana/web3.js';
 import nacl from 'tweetnacl';
 import bs58 from 'bs58';
 
 export const runtime = 'nodejs';
-const LOGIN_TTL_MS = 15 * 60 * 1000; // 15 min
+const LOGIN_TTL_MS = SIWS_NONCE_TTL_MS; // 10 min TTL
 
 // ---------- helpers ----------
 function findHeader(message: string, labels: string[]): string | null {
@@ -107,7 +112,8 @@ function logReject(
   context: { address?: string; nonce?: string; hasNonce: boolean; domainSeen: string | null; domainExpected: string }
 ) {
   try {
-    console.warn('siws.finish.reject', {
+    const logger = reason === 'nonce_invalid' || reason === 'message_expired' ? console.info : console.warn;
+    logger('siws.finish.reject', {
       reason,
       address: context.address,
       nonce: context.nonce,
@@ -268,7 +274,7 @@ export async function POST(req: NextRequest) {
       return fail(req, 400, 'nonce_invalid', context);
     }
 
-    if (storedNonce.nonce !== normalizedNonce || storedNonce.message !== message) {
+    if (storedNonce.nonce !== normalizedNonce) {
       return fail(req, 400, 'nonce_invalid', context);
     }
 
