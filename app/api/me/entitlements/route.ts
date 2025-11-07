@@ -9,7 +9,7 @@ export async function OPTIONS(req: NextRequest) {
 
 export async function GET(req: NextRequest) {
   const validation = validateRequestOrigin(req);
-  if (!validation.ok && validation.response) return validation.response;
+  if (!validation.ok && validation.response) return withCORS(req, validation.response);
 
   try {
     const { userId } = requireSession(req);

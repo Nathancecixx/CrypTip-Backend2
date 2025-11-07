@@ -73,6 +73,27 @@ export async function handleCorsOptions(req: NextRequest) {
 }
 
 export function resolveAllowedRequestDomain(req: NextRequest): string {
-  const host = new URL(req.url).host;
-  return env.SIWS_DOMAIN ?? host;
+  const originHeader = req.headers.get('origin');
+  if (originHeader) {
+    try {
+      const origin = new URL(originHeader);
+      return origin.host;
+    } catch {
+      // fall through to other strategies
+    }
+  }
+
+  if (env.FRONTEND_ORIGIN) {
+    try {
+      return new URL(env.FRONTEND_ORIGIN).host;
+    } catch {
+      // ignore malformed env
+    }
+  }
+
+  if (env.SIWS_DOMAIN) {
+    return env.SIWS_DOMAIN;
+  }
+
+  return new URL(req.url).host;
 }
