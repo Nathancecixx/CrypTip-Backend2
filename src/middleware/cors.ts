@@ -2,7 +2,7 @@ import type { NextRequest } from 'next/server';
 
 import { env } from '@/src/lib/env';
 
-type RequestLike = Pick<Request, 'headers' | 'url'> | NextRequest;
+type RequestLike = Request | NextRequest;
 
 type Handler<Req extends RequestLike = Request, Ctx = unknown> = (
   req: Req,
@@ -41,7 +41,7 @@ export function withCors<Req extends RequestLike = Request, Ctx = unknown>(handl
   };
 }
 
-export function handleCorsOptions<Req extends RequestLike = Request>(req: Req): Response {
+export function handleCorsOptions(req: RequestLike): Response {
   const evaluation = evaluateRequest(req);
 
   if (!evaluation.allowed) {
