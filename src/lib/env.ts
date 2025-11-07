@@ -1,5 +1,23 @@
 import { z } from 'zod';
 
+function parseOrigins(value?: string | null): string[] {
+  if (!value) return [];
+  return value
+    .split(',')
+    .map(origin => origin.trim())
+    .filter(Boolean);
+}
+
+function normalizeDomain(value: string): string {
+  const trimmed = value.trim();
+  try {
+    const asUrl = new URL(trimmed.includes('://') ? trimmed : `https://${trimmed}`);
+    return asUrl.host;
+  } catch {
+    return trimmed.replace(/\/+$/, '');
+  }
+}
+
 const EnvSchema = z.object({
   NEXT_PUBLIC_SOLANA_CLUSTER: z.enum(['mainnet-beta','devnet','testnet']).default('mainnet-beta'),
   RPC_PRIMARY_URL: z.string().url(),
@@ -83,9 +101,29 @@ if (!sessionSecret) {
 
 const sessionCookieName = COOKIE_NAME ?? legacySessionCookieName ?? 'ctj_sess';
 
+const frontendUrl = new URL(rest.FRONTEND_ORIGIN);
+const normalizedFrontendOrigin = frontendUrl.origin;
+const normalizedFrontendHost = frontendUrl.host;
+
+const normalizedSiwsDomain = normalizeDomain(rest.SIWS_DOMAIN);
+if (normalizedSiwsDomain !== normalizedFrontendHost) {
+  throw new Error(
+    `SIWS_DOMAIN must match the host that renders authentication (expected ${normalizedFrontendHost}, got ${normalizedSiwsDomain}).`,
+  );
+}
+
+const allowedOriginSet = new Set<string>(parseOrigins(rest.ALLOWED_ORIGINS));
+allowedOriginSet.add(normalizedFrontendOrigin);
+const normalizedAllowedOrigins = Array.from(allowedOriginSet);
+
 export const env = {
   ...rest,
   SESSION_SECRET: sessionSecret,
   SESSION_COOKIE_NAME: sessionCookieName,
   EXPERIMENTAL_PARTITIONED_COOKIES: EXPERIMENTAL_PARTITIONED_COOKIES === '1',
+  FRONTEND_ORIGIN: normalizedFrontendOrigin,
+  FRONTEND_HOST: normalizedFrontendHost,
+  ALLOWED_ORIGINS: normalizedAllowedOrigins.join(','),
+  ALLOWED_ORIGINS_LIST: normalizedAllowedOrigins,
+  SIWS_DOMAIN: normalizedSiwsDomain,
 };

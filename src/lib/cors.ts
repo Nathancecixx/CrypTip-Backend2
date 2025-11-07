@@ -14,8 +14,8 @@ function parseOrigins(value?: string | null): string[] {
 }
 
 const DEFAULT_ALLOWED_ORIGINS = [
-  'https://cryptip-frontend.vercel.app',
-  'https://crytip-frontend2.vercel.app',
+  'https://cryptip.org',
+  'https://staging.cryptip.org',
 ];
 
 function allowedOrigins(): string[] {
@@ -29,11 +29,7 @@ function allowedOrigins(): string[] {
   };
 
   for (const origin of parseOrigins(env.ORIGIN_ALLOWLIST)) push(origin);
-  for (const origin of parseOrigins(env.ALLOWED_ORIGINS)) push(origin);
-
-  if (env.FRONTEND_ORIGIN) {
-    push(env.FRONTEND_ORIGIN);
-  }
+  for (const origin of env.ALLOWED_ORIGINS_LIST ?? []) push(origin);
 
   if (results.length === 0) {
     for (const origin of DEFAULT_ALLOWED_ORIGINS) push(origin);
