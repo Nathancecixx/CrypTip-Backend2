@@ -1,36 +1,39 @@
-// src/lib/cors.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { env } from './env';
 
-// Comma-separated allowlist, or single FRONTEND_ORIGIN fallback
 function allowedOrigins(): string[] {
-  if (env.ALLOWED_ORIGINS) {
-    return env.ALLOWED_ORIGINS.split(',').map(s => s.trim()).filter(Boolean);
-  }
+  if (env.ALLOWED_ORIGINS) return env.ALLOWED_ORIGINS.split(',').map(s => s.trim()).filter(Boolean);
   return env.FRONTEND_ORIGIN ? [env.FRONTEND_ORIGIN.trim()] : [];
 }
 
-function isAllowed(origin: string | null): boolean {
-  const list = allowedOrigins();
-  if (!origin || list.length === 0) return false;
-  try {
-    const host = new URL(origin).origin;
-    return list.some(o => {
-      try { return new URL(o).origin === host; } catch { return false; }
-    });
-  } catch {
-    return false;
+function matchHost(host: string, patternHost: string): boolean {
+  if (patternHost === host) return true;
+  if (patternHost.startsWith('*.')) {
+    const suffix = patternHost.slice(1); // ".example.com"
+    return host === patternHost.slice(2) || host.endsWith(suffix);
   }
+  return false;
+}
+
+function isAllowed(origin: string | null): boolean {
+  if (!origin) return false;
+  const list = allowedOrigins();
+  if (list.length === 0) return false;
+  let url: URL;
+  try { url = new URL(origin); } catch { return false; }
+  return list.some(entry => {
+    try {
+      const pat = new URL(entry);
+      if (pat.protocol !== url.protocol) return false;
+      return matchHost(url.hostname, pat.hostname);
+    } catch { return false; }
+  });
 }
 
 export function resolveAllowedRequestDomain(req: NextRequest): string {
-  // Map to a canonical hostname for SIWS message if needed
   const origin = req.headers.get('origin');
-  if (origin) {
-    try { return new URL(origin).hostname; } catch {}
-  }
-  // final fallback to configured domain
-  return (env.SIWS_DOMAIN ?? '').trim() || 'cryptip.org';
+  try { return origin ? new URL(origin).hostname : (env.SIWS_DOMAIN ?? 'cryptip.org'); }
+  catch { return env.SIWS_DOMAIN ?? 'cryptip.org'; }
 }
 
 export function validateRequestOrigin(req: NextRequest): { ok: boolean; response?: NextResponse } {
@@ -38,7 +41,6 @@ export function validateRequestOrigin(req: NextRequest): { ok: boolean; response
   const ok = isAllowed(origin);
   if (!ok) {
     const res = NextResponse.json({ error: 'cors_origin_not_allowed' }, { status: 400 });
-    // Attach CORS meta anyway (don’t echo a disallowed origin)
     res.headers.set('Vary', 'Origin');
     res.headers.set('Access-Control-Allow-Credentials', 'true');
     return { ok, response: res };

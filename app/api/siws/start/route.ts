@@ -25,16 +25,14 @@ export async function POST(req: NextRequest) {
     if (!originCheck.ok && originCheck.response) return withCORS(req, originCheck.response);
 
     const expectedDomain = deriveExpectedDomain(req);
-
-    // If your nonce-store supports metadata, pass { domain: expectedDomain }
-    const { nonce, createdAt } = await issueNonce();
+    const { nonce, createdAt } = await issueNonce(); // optional: pass { domain: expectedDomain }
 
     const message = buildSiwsMessage(expectedDomain, ADDRESS_PLACEHOLDER, nonce, createdAt);
-    const res = NextResponse.json(
-      { nonce, message, expiresAt: new Date(new Date(createdAt).getTime() + NONCE_TTL_MS).toISOString() },
-      { status: 200 },
-    );
-    return withCORS(req, res);
+    return withCORS(req, NextResponse.json({
+      nonce,
+      message,
+      expiresAt: new Date(new Date(createdAt).getTime() + NONCE_TTL_MS).toISOString(),
+    }, { status: 200 }));
   } catch (err) {
     console.error('siws.start.error', err);
     return withCORS(req, NextResponse.json({ error: 'internal_error' }, { status: 500 }));

@@ -1,18 +1,25 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { cookies } from 'next/headers';
-import { env } from '@/src/lib/env';
-import { withCORS, handleCorsOptions } from '@/src/lib/cors';
+import type { NextRequest } from 'next/server';
+import { NextResponse } from 'next/server';
+import { handleCorsOptions, withCORS, validateRequestOrigin } from '@/src/lib/cors';
+
+export const runtime = 'nodejs';
 
 export async function OPTIONS(req: NextRequest) {
   return handleCorsOptions(req);
 }
 
 export async function POST(req: NextRequest) {
-  const jar = cookies();
-  // keep your existing cookie name + path semantics
-  jar.delete({ name: env.SESSION_COOKIE_NAME, path: '/' });
+  const originCheck = validateRequestOrigin(req);
+  if (!originCheck.ok && originCheck.response) return withCORS(req, originCheck.response);
 
-  // Use NextResponse (not the web Response) so the type matches withCORS
-  const res = NextResponse.json({ success: true }, { status: 200 });
+  const res = NextResponse.json({ ok: true }, { status: 200 });
+  // Clear the cookie with matching attributes
+  res.cookies.set('ctj_sess', '', {
+    httpOnly: true,
+    secure: true,
+    sameSite: 'none',
+    path: '/',
+    maxAge: 0,
+  });
   return withCORS(req, res);
 }
