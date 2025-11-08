@@ -1,6 +1,7 @@
 import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
 import { handleCorsOptions, withCORS, validateRequestOrigin } from '@/src/lib/cors';
+import { clearSessionCookie } from '@/src/lib/auth';
 
 export const runtime = 'nodejs';
 
@@ -14,12 +15,6 @@ export async function POST(req: NextRequest) {
 
   const res = NextResponse.json({ ok: true }, { status: 200 });
   // Clear the cookie with matching attributes
-  res.cookies.set('ctj_sess', '', {
-    httpOnly: true,
-    secure: true,
-    sameSite: 'none',
-    path: '/',
-    maxAge: 0,
-  });
+  clearSessionCookie(res);
   return withCORS(req, res);
 }
