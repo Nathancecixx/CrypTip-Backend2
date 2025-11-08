@@ -11,7 +11,20 @@ import nacl from 'tweetnacl';
 import bs58 from 'bs58';
 
 export const runtime = 'nodejs';
-const LOGIN_TTL_MS = env.SIWS_NONCE_TTL_SECONDS * 1000; // 10 min TTL
+const MAX_NONCE_TTL_SECONDS = Math.min(Math.max(env.SIWS_NONCE_TTL_SECONDS, 1), 600);
+const LOGIN_TTL_MS = MAX_NONCE_TTL_SECONDS * 1000; // enforce <= 10 min TTL
+
+function deriveExpectedDomain(req: NextRequest): string {
+  const origin = req.headers.get('origin');
+  if (origin) {
+    try {
+      return new URL(origin).hostname;
+    } catch {
+      // fall through to resolver below
+    }
+  }
+  return resolveAllowedRequestDomain(req);
+}
 
 // ---------- helpers ----------
 function findHeader(message: string, labels: string[]): string | null {
@@ -124,7 +137,7 @@ function logReject(
 function fail(
   req: NextRequest,
   status: number,
-  code: 'nonce_invalid' | 'message_expired' | 'signature_malformed' | 'bad_signature',
+  code: 'nonce_invalid' | 'message_expired' | 'signature_malformed' | 'bad_signature' | 'domain_mismatch',
   context: { address?: string; nonce?: string; hasNonce: boolean; domainSeen: string | null; domainExpected: string },
   extra: Record<string, unknown> = {}
 ) {
@@ -198,7 +211,7 @@ export async function POST(req: NextRequest) {
         : typeof body?.signature_bytes_base64 === 'string'
         ? body.signature_bytes_base64
         : undefined;
-    const expectedDomain = resolveAllowedRequestDomain(req);
+    const expectedDomain = deriveExpectedDomain(req);
     const normalizedMessage = normalizeMessageInput(body);
     if ('error' in normalizedMessage) {
       return fail(req, 400, 'nonce_invalid', {
@@ -255,7 +268,7 @@ export async function POST(req: NextRequest) {
     };
 
     if (!context.domainSeen || context.domainSeen !== expectedDomain) {
-      return fail(req, 400, 'nonce_invalid', context);
+      return fail(req, 400, 'domain_mismatch', context);
     }
 
     const messageNonce = extractNonceFromMessage(message);
