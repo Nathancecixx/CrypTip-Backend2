@@ -18,20 +18,21 @@ import bs58 from 'bs58';
 export const runtime = 'nodejs';
 
 const encoder = new TextEncoder();
+const NONCE_TTL_MS = 10 * 60 * 1000; // 10 minutes
 
 function deriveExpectedDomain(req: NextRequest): string {
-  const origin = req.headers.get('origin');
-  if (origin) {
-    try {
-      return new URL(origin).hostname;
-    } catch {
-      // fall through to resolver below
-    }
-  }
+  if (env.SIWS_DOMAIN && env.SIWS_DOMAIN.trim()) return env.SIWS_DOMAIN.trim();
   return resolveAllowedRequestDomain(req);
 }
 
-type FailureCode = 'nonce_invalid' | 'signature_malformed' | 'bad_signature';
+type FailureCode =
+  | 'address_invalid'
+  | 'nonce_invalid'
+  | 'signature_malformed'
+  | 'bad_signature'
+  | 'db_error'
+  | 'missing_session_secret'
+  | 'bad_request';
 
 type FailureContext = {
   address?: string;
@@ -39,12 +40,12 @@ type FailureContext = {
   domain: string;
 };
 
-function logReject(reason: string, context: FailureContext, extra: Record<string, unknown> = {}) {
+function logReject(reason: FailureCode, context: FailureContext, extra: Record<string, unknown> = {}) {
   try {
-    const logger = reason === 'nonce_invalid' ? console.info : console.warn;
+    const logger = reason === 'nonce_invalid' || reason === 'address_invalid' ? console.info : console.warn;
     logger('siws.finish.reject', { reason, ...context, ...extra });
   } catch {
-    // logging best-effort
+    /* no-op */
   }
 }
 
@@ -77,6 +78,7 @@ function decodeBase64Bytes(value: string): Uint8Array | null {
 }
 
 function normalizeSignatureInput(signature: unknown, signatureBytes: unknown, signatureBase64: unknown) {
+  // Prefer base58 string `signature`, then base64, then raw byte array forms.
   if (typeof signature === 'string') {
     try {
       const bytes = bs58.decode(signature);
@@ -88,17 +90,14 @@ function normalizeSignatureInput(signature: unknown, signatureBytes: unknown, si
 
   if (typeof signatureBase64 === 'string') {
     const bytes = decodeBase64Bytes(signatureBase64);
-    if (!bytes) {
-      return { error: 'signature_malformed' } as const;
-    }
+    if (!bytes) return { error: 'signature_malformed' } as const;
     return { base64: signatureBase64, bytes } as const;
   }
 
   const rawBytes = coerceBytes(signatureBytes);
-  if (!rawBytes) {
-    return { error: 'signature_malformed' } as const;
-  }
+  if (!rawBytes) return { error: 'signature_malformed' } as const;
 
+  // Normalize: encode to base58, then decode again to ensure validity
   const base58 = bs58.encode(rawBytes);
   try {
     const bytes = bs58.decode(base58);
@@ -129,109 +128,134 @@ export async function POST(req: NextRequest) {
     try {
       body = await req.json();
     } catch {
-      return withCORS(req, NextResponse.json({ error: 'bad_request', fields: { json: 'invalid' } }, { status: 400 }));
-    }
-
-    const { address, signature, signatureBytes, signatureBase64, nonce } = body ?? {};
-    const providedNonce = typeof nonce === 'string' ? nonce.trim() : '';
-    const signatureBase64Input =
-      typeof signatureBase64 === 'string'
-        ? signatureBase64
-        : typeof body?.signatureBytesBase64 === 'string'
-        ? body.signatureBytesBase64
-        : typeof body?.signature_base64 === 'string'
-        ? body.signature_base64
-        : typeof body?.signature_bytes_base64 === 'string'
-        ? body.signature_bytes_base64
-        : undefined;
-    const expectedDomain = deriveExpectedDomain(req);
-
-    if (typeof address !== 'string' || !address.trim()) {
       return fail(
         req,
         400,
-        'nonce_invalid',
-        {
-          address: undefined,
-          nonce: providedNonce || undefined,
-          domain: expectedDomain,
-        },
+        'bad_request',
+        { domain: deriveExpectedDomain(req) },
+        { fields: { json: 'invalid' } },
       );
     }
 
-    const normalizedAddress = address.trim();
+    const {
+      address,
+      signature,
+      signatureBytes,
+      signatureBase64,
+      nonce,
+      // Accept common aliases for base64 so clients are forgiving:
+      signatureBytesBase64,
+      signature_base64,
+      signature_bytes_base64,
+    } = body ?? {};
+
+    const expectedDomain = deriveExpectedDomain(req);
+    const providedAddress = typeof address === 'string' ? address.trim() : '';
+    const providedNonce = typeof nonce === 'string' ? nonce.trim() : '';
+
     const context: FailureContext = {
-      address: normalizedAddress,
+      address: providedAddress || undefined,
       nonce: providedNonce || undefined,
       domain: expectedDomain,
     };
 
+    if (!providedAddress) {
+      return fail(req, 400, 'address_invalid', context);
+    }
     if (!providedNonce) {
       return fail(req, 400, 'nonce_invalid', context);
     }
+
+    // Collect the various base64 aliases
+    const signatureBase64Input: string | undefined =
+      typeof signatureBase64 === 'string'
+        ? signatureBase64
+        : typeof signatureBytesBase64 === 'string'
+        ? signatureBytesBase64
+        : typeof signature_base64 === 'string'
+        ? signature_base64
+        : typeof signature_bytes_base64 === 'string'
+        ? signature_bytes_base64
+        : undefined;
 
     const parsedSignature = normalizeSignatureInput(signature, signatureBytes, signatureBase64Input);
     if ('error' in parsedSignature) {
       return fail(req, 400, 'signature_malformed', context);
     }
-
     if (parsedSignature.bytes.length !== 64) {
-      return fail(req, 400, 'signature_malformed', context);
+      return fail(req, 400, 'signature_malformed', context, { reason: 'bad_length' });
     }
 
     let publicKeyBytes: Uint8Array;
     try {
-      publicKeyBytes = new PublicKey(normalizedAddress).toBytes();
+      publicKeyBytes = new PublicKey(providedAddress).toBytes();
     } catch {
-      return fail(req, 400, 'signature_malformed', context);
+      return fail(req, 400, 'address_invalid', context);
     }
 
+    // Load nonce and enforce TTL
     const nonceRow = await getNonce(providedNonce);
     if (!nonceRow) {
-      return fail(req, 400, 'nonce_invalid', context);
+      return fail(req, 400, 'nonce_invalid', context, { reason: 'not_found' });
     }
 
-    const message = buildSiwsMessage(expectedDomain, normalizedAddress, providedNonce, nonceRow.created_at);
+    const createdMs = new Date(nonceRow.created_at).getTime();
+    if (!Number.isFinite(createdMs) || Date.now() - createdMs > NONCE_TTL_MS) {
+      // Burn on expiry to prevent reuse if a clock skew occurs later
+      await consumeNonce(nonceRow.id).catch(() => void 0);
+      return fail(req, 400, 'nonce_invalid', context, { reason: 'expired' });
+    }
+
+    // If you persist domain with nonceRow, also check:
+    // if (nonceRow.domain && nonceRow.domain !== expectedDomain) {
+    //   await consumeNonce(nonceRow.id).catch(() => void 0);
+    //   return fail(req, 400, 'nonce_invalid', context, { reason: 'domain_mismatch' });
+    // }
+
+    // Rebuild the exact message bytes that were signed
+    const message = buildSiwsMessage(expectedDomain, providedAddress, providedNonce, nonceRow.created_at);
     const messageBytes = encoder.encode(message);
 
+    // Verify
     if (!verifySignature(messageBytes, parsedSignature.bytes, publicKeyBytes)) {
       return fail(req, 400, 'bad_signature', context);
     }
 
-    const consumed = await consumeNonce(nonceRow.id);
+    // Consume the nonce (one-time)
+    const consumed = await consumeNonce(nonceRow.id).catch(() => false);
     if (!consumed) {
-      return fail(req, 400, 'nonce_invalid', context);
+      // Already used or race condition
+      return fail(req, 400, 'nonce_invalid', context, { reason: 'consumed' });
     }
 
     console.info('siws.finish.attempt', {
-      address: normalizedAddress,
+      address: providedAddress,
       nonce: providedNonce,
       origin: req.headers.get('origin') ?? undefined,
     });
 
+    // Create / fetch user by wallet
     let userId: string;
     try {
-      const user = await upsertUserByWallet(normalizedAddress);
+      const user = await upsertUserByWallet(providedAddress);
       userId = user.id;
     } catch (e: any) {
-      logReject('db_error', context, { code: e?.code ?? 'unknown' });
-      return withCORS(
-        req,
-        NextResponse.json({ error: 'db_error', code: e?.code ?? 'unknown', hint: 'upsertUserByWallet' }, { status: 500 }),
-      );
+      return fail(req, 500, 'db_error', context, { code: e?.code ?? 'unknown', hint: 'upsertUserByWallet' });
     }
 
     if (!env.SESSION_SECRET) {
-      logReject('missing_session_secret', context);
-      return withCORS(req, NextResponse.json({ error: 'missing_session_secret' }, { status: 500 }));
+      return fail(req, 500, 'missing_session_secret', context);
     }
 
+    // Short-lived session; refresh via your own refresh endpoint if desired.
     const token = issueSessionJWT(userId);
+
     const res = NextResponse.json({ ok: true }, { status: 200 });
+    // Ensure setSessionCookie sets: httpOnly, secure, sameSite (None if cross-site), and optionally `partitioned`.
     setSessionCookie(res, token);
 
     console.info('siws.finish.success', {
-      address: normalizedAddress,
+      address: providedAddress,
       nonce: providedNonce,
       userId,
       origin: req.headers.get('origin') ?? undefined,
