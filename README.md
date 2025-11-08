@@ -1,6 +1,6 @@
 # Crypto Tip Jar — MVP (Server & Deployment) v1.0
 
-This is a ready-to-deploy Next.js BFF implementing SIWS auth, x402 checkout + webhook (with HMAC), entitlement snapshots, pages CRUD, and a daily reconcile job. Supabase hosts the data. Optional fake-mint mode lets you run E2E before wiring real mints.
+This is a ready-to-deploy Next.js API backend (no BFF layer) implementing SIWS auth, x402 checkout + webhook (with HMAC), entitlement snapshots, pages CRUD, and a daily reconcile job. Supabase hosts the data. Optional fake-mint mode lets you run E2E before wiring real mints. Frontend apps (e.g. Next.js on Vercel) call these API routes directly over HTTPS.
 
 ## Quickstart (Local)
 
@@ -13,13 +13,13 @@ curl http://localhost:3000/api/health
 ```
 
 1. Create a Supabase project and run `supabase/schema.sql`.
-2. Copy `.env.example` to `.env.local` and fill values (set `FRONTEND_ORIGIN` to the site that will call the API, e.g. `https://app.example.com`). If you have multiple web frontends, set `ALLOWED_ORIGINS` to a comma-separated list (staging + prod) so browsers can make credentialed requests.
+2. Copy `.env.example` to `.env.local` and fill values. Set `FRONTEND_ORIGIN` to the site that will call the API (e.g. `http://localhost:3001` for local UI, `https://cryptip-frontend.vercel.app` in production). Use `ALLOWED_ORIGINS` for the comma-separated list of CORS origins (local + staging + prod) that should be able to send credentialed requests directly to this backend. Set `SESSION_SECRET` to a random string that is at least 32 bytes.
 3. Visit `/tip/<walletOrSlug>` or just `/<walletOrSlug>` (both work).
 
 ## Deploy to Vercel
 
 1. Push this repo to GitHub and import into Vercel.
-2. Set env vars from `.env.example` in Vercel > Settings > Environment Variables.
+2. Set env vars from `.env.example` in Vercel > Settings > Environment Variables (include both local and Vercel frontend URLs in `ALLOWED_ORIGINS`).
 3. Cron from `vercel.json` auto-registers for `/api/jobs/reconcile`.
 4. Create a Helius free key and set `RPC_PRIMARY_URL`.
 5. Configure x402 webhook to `https://<your-app>.vercel.app/api/store/webhook/x402` and set the shared secret.
