@@ -4,6 +4,18 @@ import { handleCorsOptions, withCORS, guardOrigin, resolveAllowedRequestDomain }
 import { buildSiwsMessage } from '@/src/lib/auth';
 import { issueNonce } from '@/src/lib/nonce-store';
 
+function deriveExpectedDomain(req: NextRequest): string {
+  const origin = req.headers.get('origin');
+  if (origin) {
+    try {
+      return new URL(origin).hostname;
+    } catch {
+      // fall through to fallback below
+    }
+  }
+  return resolveAllowedRequestDomain(req);
+}
+
 export async function OPTIONS(req: NextRequest) {
   return handleCorsOptions(req);
 }
@@ -23,7 +35,7 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const expectedDomain = resolveAllowedRequestDomain(req);
+  const expectedDomain = deriveExpectedDomain(req);
 
   const normalizedAddress = address.trim();
   if (!normalizedAddress) {

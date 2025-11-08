@@ -2,6 +2,8 @@ import { randomBytes } from 'crypto';
 import { supa } from './db';
 import { env } from './env';
 
+const NONCE_TTL_SECONDS = Math.min(Math.max(env.SIWS_NONCE_TTL_SECONDS, 1), 600);
+
 type IssueNonceParams = {
   address: string;
   domain: string;
@@ -21,7 +23,8 @@ export type SiwsNonceRow = {
   domain: string;
   issued_at: string;
   expires_at: string;
-  consumed_at: string | null;
+  used: boolean;
+  used_at: string | null;
   ip: string | null;
   user_agent: string | null;
 };
@@ -62,7 +65,7 @@ export async function issueNonce({
   }
 
   const issuedAt = new Date();
-  const expiresAt = new Date(issuedAt.getTime() + env.SIWS_NONCE_TTL_SECONDS * 1000);
+  const expiresAt = new Date(issuedAt.getTime() + NONCE_TTL_SECONDS * 1000);
   const nonce = generateNonce();
 
   const payload = {
@@ -71,14 +74,15 @@ export async function issueNonce({
     domain: normalizedDomain,
     issued_at: issuedAt.toISOString(),
     expires_at: expiresAt.toISOString(),
-    consumed_at: null as string | null,
+    used: false,
+    used_at: null as string | null,
     ip: sanitizeInput(ip, 255) ?? null,
     user_agent: sanitizeInput(userAgent, 1024) ?? null,
   };
 
   const { data, error } = await supa
     .from('siws_nonces')
-    .upsert(payload, { onConflict: 'address' })
+    .insert(payload)
     .select('*')
     .single();
 
@@ -104,12 +108,12 @@ export async function consumeIfValid({ address, nonce, domain }: ConsumeNoncePar
 
   const { data, error } = await supa
     .from('siws_nonces')
-    .update({ consumed_at: nowIso })
+    .update({ used: true, used_at: nowIso })
     .eq('address', normalizedAddress)
     .eq('nonce', nonce)
     .eq('domain', normalizedDomain)
-    .is('consumed_at', null)
-    .gt('expires_at', nowIso)
+    .eq('used', false)
+    .gte('expires_at', nowIso)
     .select('*')
     .maybeSingle();
 

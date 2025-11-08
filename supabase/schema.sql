@@ -89,12 +89,14 @@ create table if not exists webhook_events (
 );
 
 create table if not exists siws_nonces (
-  address text primary key,
-  nonce text not null,
+  address text not null,
   domain text not null,
+  nonce text not null,
   issued_at timestamptz not null default now(),
   expires_at timestamptz not null,
-  consumed_at timestamptz,
+  used boolean not null default false,
+  used_at timestamptz,
   ip text,
-  user_agent text
+  user_agent text,
+  primary key (address, domain, nonce)
 );

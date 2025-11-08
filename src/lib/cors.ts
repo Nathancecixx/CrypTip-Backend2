@@ -2,6 +2,22 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { env } from './env';
 
+function extractHostname(input?: string | null): string | null {
+  if (!input) return null;
+  try {
+    return new URL(input).hostname;
+  } catch {
+    try {
+      return new URL(`https://${input}`).hostname;
+    } catch {
+      const withoutProtocol = input.replace(/^[^:\/]+:\/\//, '');
+      const hostOnly = withoutProtocol.split('/')[0] ?? '';
+      if (!hostOnly) return null;
+      return hostOnly.split(':')[0] || null;
+    }
+  }
+}
+
 const ALLOW_METHODS = 'GET,POST,OPTIONS';
 const ALLOW_HEADERS = 'content-type, authorization';
 
@@ -94,27 +110,14 @@ export async function handleCorsOptions(req: NextRequest) {
 }
 
 export function resolveAllowedRequestDomain(req: NextRequest): string {
-  const originHeader = req.headers.get('origin');
-  if (originHeader) {
-    try {
-      const origin = new URL(originHeader);
-      return origin.host;
-    } catch {
-      // fall through to other strategies
-    }
-  }
+  const originHost = extractHostname(req.headers.get('origin'));
+  if (originHost) return originHost;
 
-  if (env.FRONTEND_ORIGIN) {
-    try {
-      return new URL(env.FRONTEND_ORIGIN).host;
-    } catch {
-      // ignore malformed env
-    }
-  }
+  const frontendHost = extractHostname(env.FRONTEND_ORIGIN);
+  if (frontendHost) return frontendHost;
 
-  if (env.SIWS_DOMAIN) {
-    return env.SIWS_DOMAIN;
-  }
+  const siwsHost = extractHostname(env.SIWS_DOMAIN);
+  if (siwsHost) return siwsHost;
 
-  return new URL(req.url).host;
+  return new URL(req.url).hostname;
 }
