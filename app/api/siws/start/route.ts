@@ -1,27 +1,17 @@
 import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
-import {
-  handleCorsOptions,
-  withCORS,
-  validateRequestOrigin,
-  resolveAllowedRequestDomain,
-} from '@/src/lib/cors';
+import { handleCorsOptions, withCORS, validateRequestOrigin, resolveAllowedRequestDomain } from '@/src/lib/cors';
 import { buildSiwsMessage } from '@/src/lib/auth';
 import { issueNonce } from '@/src/lib/nonce-store';
+import { env } from '@/src/lib/env';
 
 export const runtime = 'nodejs';
 
 const ADDRESS_PLACEHOLDER = '<WALLET_ADDRESS>';
+const NONCE_TTL_MS = 10 * 60 * 1000;
 
 function deriveExpectedDomain(req: NextRequest): string {
-  const origin = req.headers.get('origin');
-  if (origin) {
-    try {
-      return new URL(origin).hostname;
-    } catch {
-      // fall through to resolver below
-    }
-  }
+  if (env.SIWS_DOMAIN && env.SIWS_DOMAIN.trim()) return env.SIWS_DOMAIN.trim();
   return resolveAllowedRequestDomain(req);
 }
 
@@ -30,24 +20,23 @@ export async function OPTIONS(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const validation = validateRequestOrigin(req);
-  if (!validation.ok && validation.response) {
-    return withCORS(req, validation.response);
+  try {
+    const originCheck = validateRequestOrigin(req);
+    if (!originCheck.ok && originCheck.response) return withCORS(req, originCheck.response);
+
+    const expectedDomain = deriveExpectedDomain(req);
+
+    // If your nonce-store supports metadata, pass { domain: expectedDomain }
+    const { nonce, createdAt } = await issueNonce();
+
+    const message = buildSiwsMessage(expectedDomain, ADDRESS_PLACEHOLDER, nonce, createdAt);
+    const res = NextResponse.json(
+      { nonce, message, expiresAt: new Date(new Date(createdAt).getTime() + NONCE_TTL_MS).toISOString() },
+      { status: 200 },
+    );
+    return withCORS(req, res);
+  } catch (err) {
+    console.error('siws.start.error', err);
+    return withCORS(req, NextResponse.json({ error: 'internal_error' }, { status: 500 }));
   }
-
-  const expectedDomain = deriveExpectedDomain(req);
-  const { nonce, createdAt } = await issueNonce();
-
-  const message = buildSiwsMessage(expectedDomain, ADDRESS_PLACEHOLDER, nonce, createdAt);
-
-  return withCORS(
-    req,
-    NextResponse.json(
-      { nonce, message },
-      {
-        status: 200,
-        headers: { 'Cache-Control': 'no-store' },
-      },
-    ),
-  );
 }
