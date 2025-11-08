@@ -32,6 +32,7 @@ test('setSessionCookie issues cross-site session cookie without Domain', async (
   assert.ok(header.includes('; Secure'));
   assert.ok(header.includes('; SameSite=None'));
   assert.ok(header.includes('; Path=/'));
+  assert.ok(header.includes('Max-Age=604800'));
   assert.ok(!header.includes('Domain='));
   assert.ok(!header.includes('Partitioned'));
 });

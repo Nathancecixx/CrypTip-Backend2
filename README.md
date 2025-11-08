@@ -13,7 +13,7 @@ curl http://localhost:3000/api/health
 ```
 
 1. Create a Supabase project and run `supabase/schema.sql`.
-2. Copy `.env.example` to `.env.local` and fill values. Set `FRONTEND_ORIGIN` to the site that will call the API (e.g. `http://localhost:3001` for local UI, `https://cryptip-frontend.vercel.app` in production). Use `ALLOWED_ORIGINS` for the comma-separated list of CORS origins (local + staging + prod) that should be able to send credentialed requests directly to this backend. Set `SESSION_SECRET` to a random string that is at least 32 bytes.
+2. Copy `.env.example` to `.env.local` and fill values. Set `FRONTEND_ORIGIN` to the site that will call the API (e.g. `http://localhost:3001` for local UI, `https://crytip-frontend2.vercel.app` in production). Use `ALLOWED_ORIGINS` for the comma-separated list of CORS origins (local + staging + prod) that should be able to send credentialed requests directly to this backend. Set `SESSION_SECRET` to a random string that is at least 32 bytes.
 3. Visit `/tip/<walletOrSlug>` or just `/<walletOrSlug>` (both work).
 
 ## Deploy to Vercel
@@ -31,7 +31,7 @@ This repo ships with `ENABLE_FAKE_MINT=1` to avoid private-key mint logic during
 ## Routes (selected)
 
 - `POST /api/auth/siws/start` → { nonce, message }
-- `POST /api/auth/siws/finish` → sets HttpOnly session cookie `ctj_sess` (Secure, SameSite=None)
+- `POST /api/auth/siws/finish` → sets HttpOnly session cookie `ctj_sess` (Secure, SameSite=None, Path=/, 7d expiry)
 - `POST /api/pages` → create/update the page (auth)
 - `GET  /api/pages/me` → return the caller's page (auth)
 - `GET  /api/pages/:slug` → public page metadata
