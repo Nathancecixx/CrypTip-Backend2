@@ -1,7 +1,6 @@
 import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
 
-import { env } from '@/src/lib/env';
 import { upsertUserByWallet } from '@/src/lib/db';
 import {
   handleCorsOptions,
@@ -36,13 +35,13 @@ type FailureCode =
 type FailureContext = { domain: string; address?: string; nonce?: string };
 
 function ttlMs(): number {
-  const raw = Number(env.SIWS_NONCE_TTL_SECONDS ?? 0) * 1000;
+  const raw = Number((process.env.SIWS_NONCE_TTL_SECONDS || '0').trim()) * 1000;
   if (!Number.isFinite(raw) || raw <= 0) return DEFAULT_NONCE_TTL_MS;
   return Math.min(MAX_NONCE_TTL_MS, Math.max(MIN_NONCE_TTL_MS, raw));
 }
 
 function deriveExpectedDomain(req: NextRequest): string {
-  const pinned = (env.SIWS_DOMAIN ?? '').trim();
+  const pinned = (process.env.SIWS_DOMAIN || '').trim();
   return pinned || resolveAllowedRequestDomain(req);
 }
 
@@ -201,7 +200,10 @@ export async function POST(req: NextRequest) {
       return fail(req, 500, 'db_error', ctx, { code: e?.code ?? 'unknown', hint: 'upsertUserByWallet' });
     }
 
-    if (!env.SESSION_SECRET) return fail(req, 500, 'missing_session_secret', ctx);
+    // Keep the explicit check to return a good error instead of 500
+    if (!((process.env.SESSION_SECRET || '').trim())) {
+      return fail(req, 500, 'missing_session_secret', ctx);
+    }
 
     const token = issueSessionJWT(userId);
     const res = NextResponse.json({ ok: true }, { status: 200 });
