@@ -88,15 +88,11 @@ create table if not exists webhook_events (
   created_at timestamptz default now()
 );
 
-create table if not exists siws_nonces (
-  address text not null,
-  domain text not null,
-  nonce text not null,
-  issued_at timestamptz not null default now(),
-  expires_at timestamptz not null,
-  used boolean not null default false,
-  used_at timestamptz,
-  ip text,
-  user_agent text,
-  primary key (address, domain, nonce)
+create table if not exists siws_nonce (
+  id uuid primary key default gen_random_uuid(),
+  nonce text not null unique,
+  address text,
+  created_at timestamptz not null default now(),
+  expires_at timestamptz not null
 );
+create index if not exists idx_siws_nonce_expires_at on siws_nonce(expires_at);
