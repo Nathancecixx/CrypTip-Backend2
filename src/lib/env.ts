@@ -32,11 +32,11 @@ const EnvSchema = z.object({
   SIWS_DOMAIN: z.string().min(3),
   SESSION_COOKIE_NAME: z.string().optional(),
   SESSION_COOKIE_DOMAIN: z.string().optional(),
-  SESSION_MAX_AGE: z.coerce.number().default(60 * 15),
+  SESSION_MAX_AGE: z.coerce.number().default(60 * 60 * 24 * 7),
   SIWS_NONCE_TTL_SECONDS: z.coerce.number().int().positive().default(600),
   COOKIE_NAME: z.string().optional(),
   EXPERIMENTAL_PARTITIONED_COOKIES: z.string().optional(),
-  FRONTEND_ORIGIN: z.string().url().default('https://cryptip-frontend.vercel.app'),
+  FRONTEND_ORIGIN: z.string().url().default('https://crytip-frontend2.vercel.app'),
   ORIGIN_ALLOWLIST: z.string().optional(),
   ALLOWED_ORIGINS: z.string().optional(),
 
