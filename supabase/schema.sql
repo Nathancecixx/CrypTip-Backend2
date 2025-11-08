@@ -96,3 +96,16 @@ create table if not exists siws_nonce (
   expires_at timestamptz not null
 );
 create index if not exists idx_siws_nonce_expires_at on siws_nonce(expires_at);
+
+create table if not exists siws_nonces (
+  address      text primary key,             -- base58 pubkey
+  nonce        text        not null,
+  domain       text        not null,
+  issued_at    timestamptz not null default now(),
+  expires_at   timestamptz not null,
+  consumed_at  timestamptz,
+  ip           inet,
+  user_agent   text
+);
+
+create index if not exists siws_nonces_expires_idx on siws_nonces (expires_at);
