@@ -127,6 +127,23 @@ export function requireSession(req?: NextRequest): { userId: string } {
   return { userId: payload.sub };
 }
 
+export function requireSessionMiddleware(req: NextRequest):
+  | { ok: true; session: { userId: string } }
+  | { ok: false; response: NextResponse } {
+  try {
+    const session = requireSession(req);
+    return { ok: true, session };
+  } catch (error) {
+    if (error instanceof UnauthorizedError) {
+      logUnauthorizedAccess(req, error);
+      const response = NextResponse.json({ error: 'unauthorized' }, { status: 401 });
+      return { ok: false, response };
+    }
+
+    throw error;
+  }
+}
+
 export function setSessionCookie(res: NextResponse, token: string) {
   const name = env.SESSION_COOKIE_NAME || 'ctj_sess';
   const maxAge = env.SESSION_MAX_AGE ?? 60 * 15;
