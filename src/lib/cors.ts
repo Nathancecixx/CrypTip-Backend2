@@ -1,6 +1,8 @@
+// src/lib/cors.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { env } from './env';
 
+// Support comma-separated allowlist with wildcard subdomains (*.vercel.app)
 function allowedOrigins(): string[] {
   if (env.ALLOWED_ORIGINS) return env.ALLOWED_ORIGINS.split(',').map(s => s.trim()).filter(Boolean);
   return env.FRONTEND_ORIGIN ? [env.FRONTEND_ORIGIN.trim()] : [];
