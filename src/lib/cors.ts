@@ -1,79 +1,60 @@
 // src/lib/cors.ts
-import { NextRequest, NextResponse } from 'next/server';
-import { env } from './env';
+import type { NextRequest } from 'next/server';
+import { NextResponse } from 'next/server';
 
-// Support comma-separated allowlist with wildcard subdomains (*.vercel.app)
 function allowedOrigins(): string[] {
-  if (env.ALLOWED_ORIGINS) return env.ALLOWED_ORIGINS.split(',').map(s => s.trim()).filter(Boolean);
-  return env.FRONTEND_ORIGIN ? [env.FRONTEND_ORIGIN.trim()] : [];
+  const multi = (process.env.ALLOWED_ORIGINS || '').split(',').map(s => s.trim()).filter(Boolean);
+  if (multi.length > 0) return multi;
+  const single = (process.env.FRONTEND_ORIGIN || '').trim();
+  return single ? [single] : [];
 }
 
-function matchHost(host: string, patternHost: string): boolean {
-  if (patternHost === host) return true;
-  if (patternHost.startsWith('*.')) {
-    const suffix = patternHost.slice(1); // ".example.com"
-    return host === patternHost.slice(2) || host.endsWith(suffix);
-  }
-  return false;
-}
-
-function isAllowed(origin: string | null): boolean {
-  if (!origin) return false;
+function isAllowed(origin: string): boolean {
   const list = allowedOrigins();
-  if (list.length === 0) return false;
-  let url: URL;
-  try { url = new URL(origin); } catch { return false; }
-  return list.some(entry => {
-    try {
-      const pat = new URL(entry);
-      if (pat.protocol !== url.protocol) return false;
-      return matchHost(url.hostname, pat.hostname);
-    } catch { return false; }
-  });
+  if (!origin) return true; // same-origin/no CORS
+  if (list.length === 0) return true; // wide-open (dev)
+  return list.includes(origin);
 }
 
 export function resolveAllowedRequestDomain(req: NextRequest): string {
-  const origin = req.headers.get('origin');
-  try { return origin ? new URL(origin).hostname : (env.SIWS_DOMAIN ?? 'cryptip.org'); }
-  catch { return env.SIWS_DOMAIN ?? 'cryptip.org'; }
+  // Derive a sensible domain from Origin or Host for inclusion in SIWS message.
+  const origin = req.headers.get('origin') ?? '';
+  try {
+    if (origin) return new URL(origin).host;
+  } catch {}
+  const host = req.headers.get('host') ?? '';
+  return host || 'localhost';
 }
 
-export function validateRequestOrigin(req: NextRequest): { ok: boolean; response?: NextResponse } {
-  const origin = req.headers.get('origin');
+export function validateRequestOrigin(req: NextRequest) {
+  const origin = req.headers.get('origin') || '';
   const ok = isAllowed(origin);
   if (!ok) {
     const res = NextResponse.json({ error: 'cors_origin_not_allowed' }, { status: 400 });
     res.headers.set('Vary', 'Origin');
-    res.headers.set('Access-Control-Allow-Credentials', 'true');
-    return { ok, response: res };
+    return { ok, response: res, evaluation: { origin } };
   }
-  return { ok };
-}
-
-function applyCors(req: NextRequest, res: NextResponse) {
-  const origin = req.headers.get('origin');
-  if (isAllowed(origin)) {
-    res.headers.set('Access-Control-Allow-Origin', origin!);
-    res.headers.set('Access-Control-Allow-Credentials', 'true');
-  }
-  res.headers.set('Vary', 'Origin');
-  return res;
+  return { ok, evaluation: { origin } };
 }
 
 export function withCORS(req: NextRequest, res: NextResponse) {
-  return applyCors(req, res);
+  const origin = req.headers.get('origin') || '';
+  const headers = res.headers;
+
+  // Only echo back an allowed origin; do not use "*"
+  if (isAllowed(origin)) {
+    headers.set('Access-Control-Allow-Origin', origin);
+  }
+
+  headers.set('Access-Control-Allow-Credentials', 'true');
+  headers.set('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');
+  headers.set('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
+  headers.set('Access-Control-Max-Age', '600');
+  headers.set('Vary', 'Origin');
+  return res;
 }
 
 export function handleCorsOptions(req: NextRequest) {
   const res = new NextResponse(null, { status: 204 });
-  const origin = req.headers.get('origin');
-  if (isAllowed(origin)) {
-    res.headers.set('Access-Control-Allow-Origin', origin!);
-    res.headers.set('Access-Control-Allow-Credentials', 'true');
-  }
-  res.headers.set('Vary', 'Origin');
-  res.headers.set('Access-Control-Allow-Methods', 'POST, GET, OPTIONS');
-  res.headers.set('Access-Control-Allow-Headers', 'content-type, authorization');
-  res.headers.set('Access-Control-Max-Age', '86400');
-  return res;
+  return withCORS(req, res);
 }

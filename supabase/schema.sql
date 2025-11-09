@@ -97,15 +97,19 @@ create table if not exists siws_nonce (
 );
 create index if not exists idx_siws_nonce_expires_at on siws_nonce(expires_at);
 
-create table if not exists siws_nonces (
-  address      text primary key,             -- base58 pubkey
-  nonce        text        not null,
-  domain       text        not null,
-  issued_at    timestamptz not null default now(),
-  expires_at   timestamptz not null,
-  consumed_at  timestamptz,
-  ip           inet,
-  user_agent   text
+-- SIWS nonce table (idempotent create)
+create extension if not exists pgcrypto;
+
+create table if not exists public.siws_nonce (
+  id uuid primary key default gen_random_uuid(),
+  nonce text unique not null,
+  issued_at_text text not null,
+  expires_at timestamptz not null,
+  domain text not null,
+  consumed boolean not null default false,
+  created_at timestamptz not null default now()
 );
 
-create index if not exists siws_nonces_expires_idx on siws_nonces (expires_at);
+create index if not exists siws_nonce_nonce_idx on public.siws_nonce (nonce);
+create index if not exists siws_nonce_consumed_idx on public.siws_nonce (consumed);
+

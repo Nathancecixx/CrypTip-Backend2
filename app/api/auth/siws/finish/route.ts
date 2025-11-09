@@ -1,13 +1,9 @@
+// src/app/api/auth/siws/finish/route.ts
 import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
 
 import { upsertUserByWallet } from '@/src/lib/db';
-import {
-  handleCorsOptions,
-  withCORS,
-  validateRequestOrigin,
-  resolveAllowedRequestDomain,
-} from '@/src/lib/cors';
+import { handleCorsOptions, withCORS, validateRequestOrigin, resolveAllowedRequestDomain } from '@/src/lib/cors';
 import { buildSiwsMessage, issueSessionJWT, setSessionCookie } from '@/src/lib/auth';
 import { getNonce, consumeNonce } from '@/src/lib/nonce-store';
 
@@ -40,7 +36,7 @@ function ttlMs(): number {
   return Math.min(MAX_NONCE_TTL_MS, Math.max(MIN_NONCE_TTL_MS, raw));
 }
 
-function deriveExpectedDomain(req: NextRequest): string {
+function expectedDomain(req: NextRequest): string {
   const pinned = (process.env.SIWS_DOMAIN || '').trim();
   return pinned || resolveAllowedRequestDomain(req);
 }
@@ -65,8 +61,7 @@ function coerceBytes(value: unknown): Uint8Array | null {
 
 function decodeBase64Bytes(value: string | undefined): Uint8Array | null {
   if (!value || typeof value !== 'string') return null;
-  try { return new Uint8Array(Buffer.from(value, 'base64')); }
-  catch { return null; }
+  try { return new Uint8Array(Buffer.from(value, 'base64')); } catch { return null; }
 }
 
 function normalizeSignatureInput(body: any) {
@@ -74,10 +69,10 @@ function normalizeSignatureInput(body: any) {
 
   const sigB64 =
     typeof body?.signatureBase64 === 'string' ? body.signatureBase64
-    : typeof body?.signatureBytesBase64 === 'string' ? body.signatureBytesBase64
-    : typeof body?.signature_base64 === 'string' ? body.signature_base64
-    : typeof body?.signature_bytes_base64 === 'string' ? body.signature_bytes_base64
-    : undefined;
+      : typeof body?.signatureBytesBase64 === 'string' ? body.signatureBytesBase64
+      : typeof body?.signature_base64 === 'string' ? body.signature_base64
+      : typeof body?.signature_bytes_base64 === 'string' ? body.signature_bytes_base64
+      : undefined;
 
   const bytesFromArray = coerceBytes(body?.signatureBytes);
 
@@ -127,14 +122,14 @@ export async function POST(req: NextRequest) {
     try {
       body = await req.json();
     } catch {
-      return fail(req, 400, 'bad_request', { domain: deriveExpectedDomain(req) }, { fields: { json: 'invalid' } });
+      return fail(req, 400, 'bad_request', { domain: expectedDomain(req) }, { fields: { json: 'invalid' } });
     }
 
-    const expectedDomain = deriveExpectedDomain(req);
+    const domain = expectedDomain(req);
     const providedAddress = typeof body?.address === 'string' ? body.address.trim() : '';
     const providedNonce = typeof body?.nonce === 'string' ? body.nonce.trim() : '';
 
-    const ctx: FailureContext = { domain: expectedDomain, address: providedAddress || undefined, nonce: providedNonce || undefined };
+    const ctx: FailureContext = { domain, address: providedAddress || undefined, nonce: providedNonce || undefined };
 
     if (!providedAddress) return fail(req, 400, 'address_invalid', ctx);
     if (!providedNonce) return fail(req, 400, 'nonce_invalid', ctx);
@@ -149,33 +144,33 @@ export async function POST(req: NextRequest) {
     catch { return fail(req, 400, 'address_invalid', ctx); }
 
     // Load nonce
-    const nonceRow = await getNonce(providedNonce);
-    if (!nonceRow) return fail(req, 400, 'nonce_invalid', ctx, { reason: 'not_found' });
+    const nonceRow: any = await getNonce(providedNonce);
+    if (!nonceRow) return fail(req, 400, 'nonce_invalid', ctx, { reason: 'not_found_or_consumed' });
 
-    const createdAtRaw = (nonceRow as any).created_at ?? (nonceRow as any).createdAt ?? null;
-    const expiresAtRaw = (nonceRow as any).expires_at ?? (nonceRow as any).expiresAt ?? null;
-    const nonceDomain = (nonceRow as any).domain ?? undefined;
+    const issuedAtText: string | null = nonceRow.issued_at_text ?? null;
+    const expiresAtRaw: string | null = nonceRow.expires_at ?? null;
+    const nonceDomain: string | undefined = nonceRow.domain ?? undefined;
 
     const now = Date.now();
-    let createdMs = Number.isFinite(Date.parse(createdAtRaw)) ? Date.parse(createdAtRaw) : NaN;
-    if (!Number.isFinite(createdMs)) createdMs = now - ttlMs() / 2;
-    const expiresMs = Number.isFinite(Date.parse(expiresAtRaw)) ? Date.parse(expiresAtRaw) : createdMs + ttlMs();
+    const createdMs = issuedAtText ? Date.parse(issuedAtText) : NaN;
+    const fallbackCreated = Number.isFinite(createdMs) ? createdMs : now - ttlMs() / 2;
+    const expiresMs = Number.isFinite(Date.parse(expiresAtRaw ?? '')) ? Date.parse(expiresAtRaw!) : fallbackCreated + ttlMs();
 
     if (now > expiresMs) {
-      await consumeNonce((nonceRow as any).id).catch(() => void 0);
+      await consumeNonce(nonceRow.id).catch(() => void 0);
       return fail(req, 400, 'nonce_invalid', ctx, { reason: 'expired' });
     }
 
-    if (nonceDomain && nonceDomain !== expectedDomain) {
-      await consumeNonce((nonceRow as any).id).catch(() => void 0);
+    if (nonceDomain && nonceDomain !== domain) {
+      await consumeNonce(nonceRow.id).catch(() => void 0);
       return fail(req, 400, 'nonce_invalid', ctx, { reason: 'domain_mismatch' });
     }
 
     const canonicalMessage = buildSiwsMessage(
-      expectedDomain,
+      domain,
       providedAddress,
       providedNonce,
-      createdAtRaw ?? new Date(createdMs).toISOString(),
+      issuedAtText ?? new Date(fallbackCreated).toISOString(),
     );
     const messageBytes = encoder.encode(canonicalMessage);
 
@@ -183,7 +178,7 @@ export async function POST(req: NextRequest) {
       return fail(req, 400, 'bad_signature', ctx);
     }
 
-    const consumed = await consumeNonce((nonceRow as any).id).catch(() => false);
+    const consumed = await consumeNonce(nonceRow.id).catch(() => false);
     if (!consumed) return fail(req, 400, 'nonce_invalid', ctx, { reason: 'consumed' });
 
     console.info('siws.finish.attempt', {
@@ -191,6 +186,10 @@ export async function POST(req: NextRequest) {
       nonce: providedNonce,
       origin: req.headers.get('origin') ?? undefined,
     });
+
+    if (!((process.env.SESSION_SECRET || '').trim())) {
+      return fail(req, 500, 'missing_session_secret', ctx);
+    }
 
     let userId: string;
     try {
@@ -200,14 +199,10 @@ export async function POST(req: NextRequest) {
       return fail(req, 500, 'db_error', ctx, { code: e?.code ?? 'unknown', hint: 'upsertUserByWallet' });
     }
 
-    // Keep the explicit check to return a good error instead of 500
-    if (!((process.env.SESSION_SECRET || '').trim())) {
-      return fail(req, 500, 'missing_session_secret', ctx);
-    }
-
     const token = issueSessionJWT(userId);
     const res = NextResponse.json({ ok: true }, { status: 200 });
-    setSessionCookie(res, token); // HttpOnly; Secure; SameSite=None
+    // HttpOnly; Secure; SameSite=None; Partitioned optional (CHIPS)
+    setSessionCookie(res, token);
 
     console.info('siws.finish.success', {
       address: providedAddress,

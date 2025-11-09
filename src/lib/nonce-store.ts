@@ -1,85 +1,75 @@
 // src/lib/nonce-store.ts
-import crypto from 'crypto';
-import { getSupabaseAdmin } from './supabase';
-import { env } from './env';
+import { randomBytes } from 'crypto';
+import { createClient } from '@supabase/supabase-js';
 
-type NonceRow = {
-  id: string;
-  nonce: string;
-  created_at: string; // ISO from Supabase
-  expires_at: string;
-  domain?: string | null;
-};
+const NONCE_TTL_SECONDS = Math.max(
+  10,
+  Math.min(600, Number((process.env.SIWS_NONCE_TTL_SECONDS || '600').trim()) || 600)
+);
 
-const TTL_MS = (() => {
-  const n = Number(env.SIWS_NONCE_TTL_SECONDS || '600') * 1000;
-  if (!Number.isFinite(n) || n <= 0) return 10 * 60 * 1000;
-  return Math.min(n, 10 * 60 * 1000);
-})();
+const TABLE = (process.env.NONCE_TABLE || 'siws_nonce').trim();
 
-function nowISO() {
-  return new Date().toISOString();
+function supabase() {
+  const url = process.env.SUPABASE_URL!;
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+  if (!url || !key) throw new Error('Supabase credentials missing');
+  return createClient(url, key, { auth: { persistSession: false } });
 }
 
-function addMsISO(baseISO: string, deltaMs: number) {
-  return new Date(new Date(baseISO).getTime() + deltaMs).toISOString();
+function genNonce() {
+  // 24 bytes -> 32-char base64urlish when b58'd; short and unique.
+  return Buffer.from(randomBytes(24)).toString('base64url');
 }
 
-function genNonce(): string {
-  // 24 bytes → 32-char base64url-ish token; good entropy; short enough for UX
-  return crypto.randomBytes(24).toString('base64url');
-}
+export async function issueNonce(input: { domain: string }) {
+  const sb = supabase();
+  const nonce = genNonce();
+  const issuedAt = new Date().toISOString();
+  const expiresAt = new Date(Date.now() + NONCE_TTL_SECONDS * 1000).toISOString();
 
-/**
- * issueNonce — inserts a unique nonce row; retries on rare collision.
- * Optionally persist domain if you want to bind nonce→expectedDomain.
- */
-export async function issueNonce(opts?: { domain?: string }) {
-  const db = getSupabaseAdmin();
-  const createdAt = nowISO();
-  const expiresAt = addMsISO(createdAt, TTL_MS);
-
-  for (let i = 0; i < 3; i++) {
-    const nonce = genNonce();
-    const insert = {
+  const { error, data } = await sb
+    .from(TABLE)
+    .insert({
       nonce,
-      created_at: createdAt,
+      issued_at_text: issuedAt,
       expires_at: expiresAt,
-      ...(opts?.domain ? { domain: opts.domain } : {}),
-    };
-    const { data, error } = await db.from('siws_nonce').insert(insert).select('*').single<NonceRow>();
-    if (!error && data) {
-      return { id: data.id, nonce: data.nonce, createdAt: data.created_at, expiresAt: data.expires_at, domain: data.domain ?? undefined };
-    }
-    // 23505 is unique_violation in Postgres; Supabase surfaces it in error.code
-    if (error && error.code === '23505') continue; // rare collision: retry
-    // Other errors bubble; route will catch and return {hint:'issueNonce_failed'}
+      domain: input.domain,
+      consumed: false,
+    })
+    .select('id, nonce, issued_at_text, expires_at')
+    .single();
+
+  if (error) {
+    (error as any).code = error.code || 'db_insert_error';
     throw error;
   }
-  // If we somehow collided 3x
-  throw new Error('nonce_collision');
+
+  return {
+    id: data.id as string,
+    nonce: data.nonce as string,
+    createdAt: data.issued_at_text as string,
+    expiresAt: data.expires_at as string,
+  };
 }
 
-/**
- * getNonce — returns a non-expired nonce row by value.
- * If your DB already cleans expired rows, we still check in code for safety.
- */
-export async function getNonce(nonce: string): Promise<NonceRow | null> {
-  const db = getSupabaseAdmin();
-  const { data, error } = await db.from('siws_nonce').select('*').eq('nonce', nonce).limit(1).maybeSingle<NonceRow>();
-  if (error) throw error;
-  if (!data) return null;
-  // Enforce expiry in code too
-  if (Date.now() > Date.parse(data.expires_at)) return null;
+export async function getNonce(nonce: string) {
+  const sb = supabase();
+  const { data, error } = await sb
+    .from(TABLE)
+    .select('id, nonce, issued_at_text, expires_at, domain, consumed')
+    .eq('nonce', nonce)
+    .single();
+
+  if (error) {
+    if (error.code === 'PGRST116') return null; // no rows
+    return null;
+  }
+  if (!data || data.consumed) return null;
   return data;
 }
 
-/**
- * consumeNonce — deletes the row by id, returning true if exactly one row was removed.
- */
 export async function consumeNonce(id: string): Promise<boolean> {
-  const db = getSupabaseAdmin();
-  const { count, error } = await db.from('siws_nonce').delete({ count: 'exact' }).eq('id', id);
-  if (error) throw error;
-  return !!count && count > 0;
+  const sb = supabase();
+  const { error } = await sb.from(TABLE).update({ consumed: true }).eq('id', id);
+  return !error;
 }
